@@ -859,90 +859,14 @@ class UpscaleModelView(View):
         log.warning("UpscaleModelView error: %s", error)
 
 
-class CheckpointButton(Button):
-    """One checkpoint option in the /upscale sdxl picker.
-
-    ``checkpoint`` is ``None`` for the "Default" option (the workflow's own
-    checkpoint, with automatic fallback to an available SDXL checkpoint).
-    """
-
-    def __init__(self, checkpoint: str | None, label: str, index: int):
-        # custom_id must be letters/digits/underscore/hyphen; use an index so it
-        # stays valid regardless of the checkpoint filename's characters.
-        custom_id = "ckpt_default" if checkpoint is None else f"ckpt{index}"
-        super().__init__(label=label, emoji="\U0001f505", custom_id=custom_id)
-        self.checkpoint = checkpoint
-
-    async def callback(self, interaction: discord.Interaction):
-        if await ban_guard(interaction):
-            return
-        view: CheckpointPickerView = self.view
-        stealth = view.stealth
-        log.info("Upscale checkpoint %s selected", self.checkpoint or "default")
-        # The /upscale command already consumed the cooldown when invoked;
-        # the checkpoint click is the continuation of that same request, so we
-        # do not re-check (re-checking would always fail and block the run).
-        await interaction.response.defer(ephemeral=stealth)
-        progress_msg = await interaction.followup.send(
-            content="\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
-            ephemeral=stealth,
-        )
-        progress = ProgressUpdater(progress_msg)
-        try:
-            images, meta = await run_image(
-                view.spec, on_progress=progress.update, model_key=view.model_key,
-                prompt=view.prompt, negative=view.negative, strength=view.strength,
-                image_filename=view.uploaded_name, scale=view.scale,
-                input_longest_side=view.input_longest_side,
-                ckpt_name=self.checkpoint,
-            )
-            progress.done = True
-            for img in images:
-                if await nsfw_guard.check_image_nsfw(img, interaction):
-                    msg = await progress_msg.edit(
-                        content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
-                    )
-                    schedule_message_deletion(msg)
-                    return
-            files = []
-            for i, img in enumerate(images):
-                img_bytes, ext = compress_image(img)
-                files.append(discord.File(io.BytesIO(img_bytes), filename=f"{view.model_key}_upscale_{i}{ext}"))
-            display_ckpt = meta.get("ckpt_name") or self.checkpoint
-            base_desc = (
-                f"**Model:** {view.model_key}"
-                + (f"\n**Checkpoint:** {display_ckpt}" if display_ckpt else "")
-                + (f"\n**Scale:** {view.scale:g}x" if view.scale is not None else "")
-                + f"\n**Resolution:** {image_resolution(images[0])}"
-            )
-            embed = discord.Embed(
-                description=base_desc + "\n" + "\n".join(meta_lines(meta)),
-                color=discord.Color.green(),
-            )
-            response_msg = await progress_msg.edit(
-                content="", embed=embed, attachments=files, view=GenerationView(stealth=stealth)
-            )
-            generation_store.save(response_msg.id, {
-                "spec": view.spec, "model": view.model_key, "suffix": "upscale", "stealth": stealth,
-                "embed_desc": base_desc, "embed_color": int(embed.color),
-                "user_id": interaction.user.id,
-                "kwargs": {"prompt": view.prompt, "negative": view.negative, "strength": view.strength,
-                            "image_filename": view.uploaded_name, "scale": view.scale,
-                            "input_longest_side": view.input_longest_side, "ckpt_name": self.checkpoint},
-            })
-        except Exception as exc:
-            progress.done = True
-            logging.getLogger("bot").exception("checkpoint upscale failed")
-            await reply_error(interaction, f"\u274c Upscaling failed: {exc}", target=progress_msg)
-
-
 class CheckpointPickerView(View):
-    """Ephemeral picker shown when /upscale uses the sdxl workflow.
+    """Ephemeral select-menu picker shown when /upscale uses the sdxl workflow.
 
-    Lets the user pick any checkpoint in models/checkpoints to upscale with.
-    Carries the uploaded input image name, resolution, and generation params
-    so the chosen checkpoint button can run the upscale without re-downloading
-    the image.
+    Modeled on ``ThinkingView``: a single ``Select`` listing every checkpoint
+    in models/checkpoints (plus "Default", which uses the workflow's own
+    checkpoint with automatic fallback). Carries the uploaded input image name,
+    resolution, and generation params so the selected option can run the
+    upscale without re-downloading the image.
     """
 
     def __init__(self, spec: dict, model_key: str, uploaded_name: str,
@@ -960,14 +884,99 @@ class CheckpointPickerView(View):
         self.negative = negative
         self.strength = strength
         self.scale = scale
-        # Default first (workflow's own checkpoint + automatic fallback).
-        self.add_item(CheckpointButton(None, "Default (workflow checkpoint)", 0))
-        # Discord allows at most 25 buttons per view.
-        for i, ckpt in enumerate(checkpoints[:25], start=1):
-            self.add_item(CheckpointButton(ckpt, ckpt, i))
+        # "default" maps to the workflow's own checkpoint (with automatic
+        # fallback to an available SDXL checkpoint in run_image).
+        options = [discord.SelectOption(label="Default (workflow checkpoint)", value="default")]
+        options += [discord.SelectOption(label=c, value=c) for c in checkpoints[:100]]
+        self.add_item(CheckpointSelect(
+            placeholder="Select a checkpoint",
+            options=options,
+            min_values=1, max_values=1,
+            custom_id="upscale_checkpoint",
+        ))
+
+    async def handle_select(self, interaction: discord.Interaction, value: str):
+        if await ban_guard(interaction):
+            return
+        self.stop()
+        ckpt_name = None if value == "default" else value
+        log.info("Upscale checkpoint %s selected", ckpt_name or "default")
+        # The /upscale command already consumed the cooldown when invoked;
+        # the select click is the continuation of that same request, so we do
+        # not re-check (re-checking would always fail and block the run).
+        await interaction.response.defer(ephemeral=self.stealth)
+        progress_msg = await interaction.followup.send(
+            content="\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            ephemeral=self.stealth,
+        )
+        progress = ProgressUpdater(progress_msg)
+        try:
+            images, meta = await run_image(
+                self.spec, on_progress=progress.update, model_key=self.model_key,
+                prompt=self.prompt, negative=self.negative, strength=self.strength,
+                image_filename=self.uploaded_name, scale=self.scale,
+                input_longest_side=self.input_longest_side,
+                ckpt_name=ckpt_name,
+            )
+            progress.done = True
+            for img in images:
+                if await nsfw_guard.check_image_nsfw(img, interaction):
+                    msg = await progress_msg.edit(
+                        content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
+                    )
+                    schedule_message_deletion(msg)
+                    return
+            files = []
+            for i, img in enumerate(images):
+                img_bytes, ext = compress_image(img)
+                files.append(discord.File(io.BytesIO(img_bytes), filename=f"{self.model_key}_upscale_{i}{ext}"))
+            display_ckpt = meta.get("ckpt_name") or ckpt_name
+            base_desc = (
+                f"**Model:** {self.model_key}"
+                + (f"\n**Checkpoint:** {display_ckpt}" if display_ckpt else "")
+                + (f"\n**Scale:** {self.scale:g}x" if self.scale is not None else "")
+                + f"\n**Resolution:** {image_resolution(images[0])}"
+            )
+            embed = discord.Embed(
+                description=base_desc + "\n" + "\n".join(meta_lines(meta)),
+                color=discord.Color.green(),
+            )
+            response_msg = await progress_msg.edit(
+                content="", embed=embed, attachments=files, view=GenerationView(stealth=self.stealth)
+            )
+            generation_store.save(response_msg.id, {
+                "spec": self.spec, "model": self.model_key, "suffix": "upscale", "stealth": self.stealth,
+                "embed_desc": base_desc, "embed_color": int(embed.color),
+                "user_id": interaction.user.id,
+                "kwargs": {"prompt": self.prompt, "negative": self.negative, "strength": self.strength,
+                            "image_filename": self.uploaded_name, "scale": self.scale,
+                            "input_longest_side": self.input_longest_side, "ckpt_name": ckpt_name},
+            })
+        except Exception as exc:
+            progress.done = True
+            logging.getLogger("bot").exception("checkpoint upscale failed")
+            await reply_error(interaction, f"\u274c Upscaling failed: {exc}", target=progress_msg)
+
+    async def on_timeout(self):
+        try:
+            await self.message.edit(content="\u23f3 Checkpoint selection expired; upscale cancelled.")
+        except Exception:
+            pass
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item):
         log.warning("CheckpointPickerView error: %s", error)
+
+
+class CheckpointSelect(Select):
+    """The checkpoint select item shown by the /upscale sdxl picker.
+
+    discord.py dispatches select-menu interactions to the component's own
+    ``callback`` method, NOT to a View-level handler — so the handler lives
+    on the select itself (same pattern as ``ThinkingSelect``).
+    """
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.view.handle_select(interaction, self.values[0])
 
 
 class UpscaleButton(Button):
@@ -1801,14 +1810,17 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
         # SDXL upscale: let the user pick any checkpoint from models/checkpoints.
         # Show an ephemeral picker; the selected button runs the upscale.
         if model == "sdxl":
+            # Defer first (within Discord's 3-second window) so the interaction
+            # token doesn't expire while fetch_checkpoints() queries ComfyUI.
+            await interaction.response.defer(ephemeral=True)
+            msg = await interaction.original_response()
             try:
                 checkpoints = await comfy.fetch_checkpoints()
             except Exception as exc:
                 log.warning("Could not fetch checkpoints for sdxl upscale: %s", exc)
                 checkpoints = []
-            await interaction.response.send_message(
+            await msg.edit(
                 content="\u2705 Image uploaded. Pick a checkpoint to upscale with:",
-                ephemeral=True,
                 view=CheckpointPickerView(
                     spec, model, uploaded_name, input_longest_side, stealth,
                     prompt, negative, strength, scale, checkpoints,
@@ -1859,7 +1871,12 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
                        "input_longest_side": input_longest_side},
         })
     except (ComfyUIError, Exception) as exc:
-        progress.done = True
+        # progress is only bound on the non-sdxl path; guard so an error in the
+        # sdxl branch (which returns early) doesn't raise UnboundLocalError.
+        try:
+            progress.done = True
+        except UnboundLocalError:
+            pass
         logging.getLogger("bot").exception("upscale failed")
         await reply_error(interaction, f"\u274c Upscaling failed: {exc}")
 
