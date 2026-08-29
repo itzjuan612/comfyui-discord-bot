@@ -509,6 +509,15 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         else:
             raise ValueError(f"Workflow has no model-loader node; cannot select model {ckpt_name!r}.")
 
+    # Ideogram's second UNet loader (unconditional branch) can be overridden
+    # independently via the spec's default_model_unconditional / model_node_unconditional.
+    default_model_unconditional = spec.get("default_model_unconditional")
+    model_node_unconditional = spec.get("model_node_unconditional")
+    if default_model_unconditional is not None and model_node_unconditional is not None:
+        node = workflow.get(str(model_node_unconditional))
+        if node is not None and node.get("class_type") == "UNETLoader":
+            node["inputs"]["unet_name"] = default_model_unconditional
+
     prompt = kwargs.get("prompt")
     negative = kwargs.get("negative")
     seed = kwargs.get("seed")

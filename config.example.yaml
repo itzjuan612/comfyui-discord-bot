@@ -74,6 +74,9 @@ models:
       file: workflows/t2i/Ideogram_4_generator.json
       default_model: "ideogram4_fp8_scaled.safetensors"
       model_node: "98:23"
+      # The workflow has a second UNet loader for the unconditional branch.
+      default_model_unconditional: "ideogram4_unconditional_fp8_scaled.safetensors"
+      model_node_unconditional: "98:154"
       prompt_node: "98:24"
       prompt_key: text
       seed_node: "190"
