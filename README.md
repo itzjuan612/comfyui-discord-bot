@@ -12,15 +12,15 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | Feature                                                   | Description                                                                                                                                                |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 🎨 **Ideogram (`/ideogram`)**                             | Generate images with Ideogram 4. Supports prompt, seed, quality preset, megapixels, and aspect ratio.                                                      |
-| 🎨 **SDXL (`/sdxl`)**                                     | Generate images with SDXL. Supports prompt, negative prompt, seed, steps, width/height, and CFG.                                                           |
+| 🎨 **SDXL (`/sdxl`)**                                     | Generate images with SDXL. Supports prompt, negative prompt, seed, steps, width/height, and CFG. Can use any checkpoint in ComfyUI's `models/checkpoints` folder via the `model` parameter.                  |
 | ✏️ **Image-to-Image (`/img2img`)**                        | Edit one image or combine two images using Flux 2 Klein 4B Base. Supports cfg, steps, sampler, megapixels.                                                 |
-| 🔍 **Upscale (`/upscale`)**                               | Upscale an attached image using SDXL, SeedVR2, or FlashVSR. Supports custom scale factor, prompt, negative, and strength.                                  |
+| 🔍 **Upscale (`/upscale`)**                               | Upscale an attached image using SDXL, SeedVR2, or FlashVSR. SDXL shows a picker to use any checkpoint in `models/checkpoints`. Supports custom scale factor, prompt, negative, and strength.                                  |
 | 💬 **Prompt Generation (`/gen_prompt`)**                  | Converts a natural-language idea into a structured Ideogram 4 JSON caption using an LLM (OpenAI-compatible endpoint). Includes reasoning-effort selection. |
 | 📋 **LLM Model List (`/llm_models`)**                     | Lists all models available on the configured LLM endpoint.                                                                                                 |
 | 📊 **Progress Bar**                                       | Live progress bar updated via ComfyUI WebSocket during generation.                                                                                         |
 | 🕶️ **Stealth Mode**                                      | Ephemeral messages visible only to the requesting user.                                                                                                    |
 | 🔁 **Retry / Delete Buttons**                             | Persistent buttons on every output message. Retry re-rolls the seed; Delete removes the message (owner or admins can delete any).                          |
-| 🚀 **Upscale 2x Button**                                  | One-click upscale of any generated image, with model picker.                                                                                               |
+| 🚀 **Upscale 2x Button**                                  | One-click upscale of any generated image, with model picker. For SDXL images, the SDXL option reuses the checkpoint the image was created with; for non-SDXL images the SDXL option is hidden (SDXL upscale works best with SDXL checkpoints).                                                                                               |
 | 🖌️ **Edit Image Button**                                 | Opens a modal to run the Flux 2 Klein 4B single-image edit workflow on an output.                                                                          |
 | ⚙️ **Per-User Settings (`/settings`, `/reset_settings`)** | Saved defaults for prompts, CFG, steps, sampler, quality, megapixels, aspect ratio, and stealth. Stored in SQLite.                                         |
 | 🛡️ **NSFW Guardrail**                                    | Keyword-based prompt filter + CPU ONNX image classifier. NSFW content is blocked unless the channel is Discord-marked NSFW.                                |
@@ -28,7 +28,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | 🧹 **Flush (`/flush`)**                                   | Unloads all ComfyUI models and execution cache to free VRAM/RAM.                                                                                           |
 | 🛠️ **Admin Panel (`/admin`)**                            | Owner can restart the bot, manage admins, and manage bans.                                                                                                 |
 | ⏱️ **Cooldown**                                           | Per-user 20-second minimum interval between generations.                                                                                                   |
-| 💾 **Memory Management**                                  | Automatically frees ComfyUI memory when switching between workflows.                                                                                       |
+| 💾 **Memory Management**                                  | Automatically frees ComfyUI memory when switching between workflows, or when choosing a different checkpoint (`model`) for `/sdxl`. Reusing the same checkpoint causes no flush.                                                                                       |
 
 
 ---
@@ -59,7 +59,10 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | `steps`            | Sampling steps             |
 | `width` / `height` | Dimensions, multiple of 64 |
 | `cfg`              | Guidance scale             |
+| `model`            | Checkpoint filename in ComfyUI's `models/checkpoints` folder (optional; defaults to the workflow's checkpoint) |
 | `stealth`          | Ephemeral output           |
+> **Any checkpoint:** Pass any file name present in ComfyUI's `models/checkpoints` folder via `model` to generate with a different checkpoint instead of the workflow's default. The bot verifies the file exists before running the workflow, and the embed reports the checkpoint actually used. Switching to a different checkpoint frees ComfyUI memory; reusing the same checkpoint does not. If the workflow's default checkpoint (e.g. `SDXL.safetensors`) is missing from `models/checkpoints`, the bot automatically falls back to an available checkpoint (preferring one whose name contains "sdxl") and the embed reports the checkpoint actually used. The `model` parameter uses dynamic autocomplete: as you type, the bot filters the live checkpoint list (cached for 60 seconds), so newly added checkpoint files appear without a bot restart or slash-command re-sync.
+
 
 
 ### `/gen_prompt`
@@ -89,6 +92,8 @@ After selecting the reasoning effort, the bot composes the prompt via the Ideogr
 | `strength` | Denoise strength 0–1 (SDXL only)       |
 | `scale`    | Upscale factor (e.g. 2 or 3)           |
 | `stealth`  | Ephemeral output                       |
+
+> **SDXL checkpoint picker:** Choosing `sdxl` uploads your image, then shows an ephemeral picker listing every checkpoint in ComfyUI's `models/checkpoints` folder (plus a **Default** option that uses the workflow's own checkpoint). Selecting a checkpoint runs the SDXL upscale workflow with that checkpoint; the embed reports the checkpoint actually used. Switching to a different checkpoint frees ComfyUI memory; reusing the same one does not.
 
 
 ### `/img2img`
