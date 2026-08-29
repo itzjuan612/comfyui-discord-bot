@@ -368,6 +368,9 @@ MIN_INTERVAL_SECONDS = 20
 # Track the last workflow file used per model so we can free memory
 # when switching between workflows.
 last_workflow_by_model: dict[str, str] = {}
+# Track the last checkpoint (ckpt_name) used per model so we can free
+# memory when switching to a different checkpoint within the same workflow.
+last_ckpt_by_model: dict[str, str] = {}
 
 # Progress bar settings for the generation progress message.
 PROGRESS_BAR_WIDTH = 10
@@ -460,6 +463,17 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         if node_id is not None:
             workflow[str(node_id)]["inputs"][key] = value
 
+    ckpt_name = kwargs.get("ckpt_name")
+    if ckpt_name is not None:
+        # Point the checkpoint loader at the requested file. Works with any
+        # checkpoint present in ComfyUI's models/checkpoints folder.
+        for nid, node in workflow.items():
+            if node.get("class_type") == "CheckpointLoaderSimple":
+                node["inputs"]["ckpt_name"] = ckpt_name
+                break
+        else:
+            raise ValueError("Workflow has no CheckpointLoaderSimple node; cannot select a checkpoint.")
+
     prompt = kwargs.get("prompt")
     negative = kwargs.get("negative")
     seed = kwargs.get("seed")
@@ -546,13 +560,30 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
     # from the previous workflow don't stay loaded.
     model_key = kwargs.get("model_key", "default")
     last = last_workflow_by_model.get(model_key)
-    if last is not None and last != spec["file"]:
+    workflow_changed = last is not None and last != spec["file"]
+    if workflow_changed:
         log.info("Switching workflow %s -> %s; freeing memory", last, spec["file"])
         await comfy.free_memory()
     last_workflow_by_model[model_key] = spec["file"]
 
     workflow = load_workflow(spec["file"])
     api_workflow = graph_to_api(workflow) if "nodes" in workflow else workflow
+
+    # Free VRAM/RAM when switching to a different checkpoint within the same
+    # workflow (e.g. a different SDXL model file). Reusing the same
+    # checkpoint causes no flush, so only checkpoint switches flush.
+    effective_ckpt = kwargs.get("ckpt_name")
+    if effective_ckpt is None:
+        for node in api_workflow.values():
+            if node.get("class_type") == "CheckpointLoaderSimple":
+                effective_ckpt = node["inputs"].get("ckpt_name")
+                break
+    last_ckpt = last_ckpt_by_model.get(model_key)
+    if not workflow_changed and last_ckpt is not None and last_ckpt != effective_ckpt:
+        log.info("Switching checkpoint %s -> %s; freeing memory", last_ckpt, effective_ckpt)
+        await comfy.free_memory()
+    last_ckpt_by_model[model_key] = effective_ckpt
+
     apply_spec(api_workflow, spec, **kwargs)
 
     # Capture the exact parameters actually used, so the output embed can
@@ -1210,7 +1241,8 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
         for i, img in enumerate(images):
             img_bytes, ext = compress_image(img)
             files.append(discord.File(io.BytesIO(img_bytes), filename=f"{model}_t2i_{i}{ext}"))
-        base_lines = [f"**Model:** {model}", f"**Prompt:** {prompt}"]
+        display_model = gen_kwargs.get("ckpt_name") or model
+        base_lines = [f"**Model:** {display_model}", f"**Prompt:** {prompt}"]
         if model == "ideogram":
             quality = gen_kwargs.get("quality")
             if quality:
@@ -1300,7 +1332,7 @@ async def ideogram(interaction: discord.Interaction, prompt: str,
     await run_t2i_generation(interaction, "ideogram", prompt, stealth, gen_kwargs)
 
 
-@bot.tree.command(name="sdxl", description="Generate an image with SDXL")
+@bot.tree.command(name="sdxl", description="Generate an image with SDXL or any checkpoint in models/checkpoints")
 @app_commands.describe(prompt="Text prompt")
 @app_commands.describe(negative="Negative prompt")
 @app_commands.describe(seed="Seed (optional)")
@@ -1308,6 +1340,7 @@ async def ideogram(interaction: discord.Interaction, prompt: str,
 @app_commands.describe(width="Width in pixels, multiple of 64")
 @app_commands.describe(height="Height in pixels, multiple of 64")
 @app_commands.describe(cfg="CFG guidance scale")
+@app_commands.describe(model="Checkpoint filename in ComfyUI's models/checkpoints (optional)")
 @app_commands.describe(stealth="Ephemeral output, visible only to you")
 async def sdxl(interaction: discord.Interaction, prompt: str,
                negative: str | None = None,
@@ -1316,6 +1349,7 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
                width: int | None = None,
                height: int | None = None,
                cfg: float | None = None,
+               model: str | None = None,
                stealth: bool | None = None):
     if stealth is None:
         stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
@@ -1345,6 +1379,26 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
         steps = settings["steps"]
     if cfg is None:
         cfg = settings["cfg"]
+
+    # Optional checkpoint selection: any file in ComfyUI's models/checkpoints
+    # folder can be used instead of the workflow's default checkpoint.
+    if model is not None:
+        try:
+            available = await comfy.fetch_checkpoints()
+        except Exception as exc:
+            log.warning("Could not list checkpoints: %s", exc)
+            await interaction.response.send_message(
+                content=f"\u274c Could not query ComfyUI for available checkpoints: {exc}",
+                ephemeral=True,
+            )
+            return
+        if model not in available:
+            await interaction.response.send_message(
+                content=f"\u274c Checkpoint \u201c{model}\u201d was not found in models/checkpoints.",
+                ephemeral=True,
+            )
+            return
+
     gen_kwargs = {
         "prompt": prompt,
         "negative": negative,
@@ -1353,6 +1407,7 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
         "width": width,
         "height": height,
         "cfg": cfg,
+        "ckpt_name": model,
     }
     await run_t2i_generation(interaction, "sdxl", prompt, stealth, gen_kwargs)
 

@@ -169,6 +169,15 @@ class ComfyUIClient:
                 except asyncio.CancelledError:
                     pass
 
+    async def fetch_checkpoints(self) -> list[str]:
+        """List checkpoint files available in ComfyUI's models/checkpoints folder."""
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{self.base_url}/models/checkpoints") as resp:
+                if resp.status != 200:
+                    raise ComfyUIError(f"Could not list checkpoints (HTTP {resp.status})")
+                data = await resp.json()
+        return [c["name"] for c in data.get("checkpoints", [])]
+
     async def free_memory(self) -> None:
         """Ask ComfyUI to unload all loaded models, freeing VRAM and RAM.
 
