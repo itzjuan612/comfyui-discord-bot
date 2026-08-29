@@ -190,7 +190,17 @@ class ComfyUIClient:
                 if resp.status != 200:
                     raise ComfyUIError(f"Could not list checkpoints (HTTP {resp.status})")
                 data = await resp.json()
-        self._ckpt_cache = [c["name"] for c in data.get("checkpoints", [])]
+        # ComfyUI's GET /models/{folder} returns a bare JSON array of plain
+        # filename strings (e.g. ["SDXL.safetensors", "flux.safetensors"]).
+        # Tolerate a dict wrapper and dict items for forward compatibility.
+        items = data.get("checkpoints") if isinstance(data, dict) else data
+        names = []
+        for item in items:
+            if isinstance(item, str):
+                names.append(item)
+            elif isinstance(item, dict) and "name" in item:
+                names.append(item["name"])
+        self._ckpt_cache = names
         self._ckpt_cache_time = time.monotonic()
         return self._ckpt_cache
 
