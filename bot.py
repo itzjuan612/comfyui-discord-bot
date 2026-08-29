@@ -359,6 +359,23 @@ def _llm_model_choices() -> list[app_commands.Choice]:
 LLM_MODEL_CHOICES = _llm_model_choices()
 
 
+def _sdxl_checkpoint_choices() -> list[app_commands.Choice]:
+    """Fetch the checkpoint list from ComfyUI at startup for /sdxl autocomplete.
+
+    If ComfyUI is unreachable at startup the list stays empty, which makes the
+    ``model`` parameter free text (type any filename manually).
+    """
+    try:
+        checkpoints = asyncio.run(comfy.fetch_checkpoints())
+    except Exception as exc:
+        log.warning("Could not fetch checkpoint list at startup: %s", exc)
+        checkpoints = []
+    return [app_commands.Choice(name=c, value=c) for c in checkpoints]
+
+
+SDXL_CHECKPOINT_CHOICES = _sdxl_checkpoint_choices()
+
+
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
 
 # Per-user cooldown to prevent abuse of the GPU.
@@ -1333,24 +1350,25 @@ async def ideogram(interaction: discord.Interaction, prompt: str,
 
 
 @bot.tree.command(name="sdxl", description="Generate an image with SDXL or any checkpoint in models/checkpoints")
+@app_commands.choices(model=SDXL_CHECKPOINT_CHOICES)
 @app_commands.describe(prompt="Text prompt")
+@app_commands.describe(model="Checkpoint in models/checkpoints (optional)")
 @app_commands.describe(negative="Negative prompt")
 @app_commands.describe(seed="Seed (optional)")
 @app_commands.describe(steps="Sampling steps")
 @app_commands.describe(width="Width in pixels, multiple of 64")
 @app_commands.describe(height="Height in pixels, multiple of 64")
 @app_commands.describe(cfg="CFG guidance scale")
-@app_commands.describe(model="Checkpoint filename in ComfyUI's models/checkpoints (optional)")
 @app_commands.describe(stealth="Ephemeral output, visible only to you")
 async def sdxl(interaction: discord.Interaction, prompt: str,
-               negative: str | None = None,
-               seed: int | None = None,
-               steps: int | None = None,
-               width: int | None = None,
-               height: int | None = None,
-               cfg: float | None = None,
-               model: str | None = None,
-               stealth: bool | None = None):
+                model: str | None = None,
+                negative: str | None = None,
+                seed: int | None = None,
+                steps: int | None = None,
+                width: int | None = None,
+                height: int | None = None,
+                cfg: float | None = None,
+                stealth: bool | None = None):
     if stealth is None:
         stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
     if moderation.is_banned(interaction.user.id):
