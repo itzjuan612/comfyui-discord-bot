@@ -359,21 +359,25 @@ def _llm_model_choices() -> list[app_commands.Choice]:
 LLM_MODEL_CHOICES = _llm_model_choices()
 
 
-def _sdxl_checkpoint_choices() -> list[app_commands.Choice]:
-    """Fetch the checkpoint list from ComfyUI at startup for /sdxl autocomplete.
+async def _sdxl_model_autocomplete(interaction: discord.Interaction, current_input: str):
+    """Dynamic autocomplete for /sdxl's ``model`` parameter.
 
-    If ComfyUI is unreachable at startup the list stays empty, which makes the
-    ``model`` parameter free text (type any filename manually).
+    Suggests checkpoint files from ComfyUI's models/checkpoints folder,
+    filtered by what the user has typed so far. The list comes from the
+    cached ``fetch_checkpoints()`` (60s TTL), so newly added checkpoint
+    files appear without a bot restart or slash-command re-sync.
     """
     try:
-        checkpoints = asyncio.run(comfy.fetch_checkpoints())
+        checkpoints = await comfy.fetch_checkpoints()
     except Exception as exc:
-        log.warning("Could not fetch checkpoint list at startup: %s", exc)
-        checkpoints = []
-    return [app_commands.Choice(name=c, value=c) for c in checkpoints]
-
-
-SDXL_CHECKPOINT_CHOICES = _sdxl_checkpoint_choices()
+        log.warning("Could not fetch checkpoint list for autocomplete: %s", exc)
+        return []
+    if current_input:
+        matches = [c for c in checkpoints if current_input.lower() in c.lower()]
+    else:
+        matches = checkpoints
+    # Discord allows at most 25 autocomplete choices.
+    return [app_commands.Choice(name=c, value=c) for c in matches[:25]]
 
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
@@ -586,15 +590,27 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
     workflow = load_workflow(spec["file"])
     api_workflow = graph_to_api(workflow) if "nodes" in workflow else workflow
 
-    # Free VRAM/RAM when switching to a different checkpoint within the same
-    # workflow (e.g. a different SDXL model file). Reusing the same
-    # checkpoint causes no flush, so only checkpoint switches flush.
+    # Determine the effective checkpoint. If the user didn't choose one, use
+    # the workflow's default. If that default file doesn't exist in ComfyUI's
+    # models/checkpoints folder, fall back to an available checkpoint
+    # (preferring one whose name contains "sdxl").
     effective_ckpt = kwargs.get("ckpt_name")
     if effective_ckpt is None:
+        default_ckpt = None
         for node in api_workflow.values():
             if node.get("class_type") == "CheckpointLoaderSimple":
-                effective_ckpt = node["inputs"].get("ckpt_name")
+                default_ckpt = node["inputs"].get("ckpt_name")
                 break
+        if default_ckpt is not None:
+            try:
+                available = await comfy.fetch_checkpoints()
+            except Exception as exc:
+                log.warning("Could not list checkpoints for fallback: %s", exc)
+                available = []
+            if available and default_ckpt not in available:
+                effective_ckpt = next((c for c in available if "sdxl" in c.lower()), available[0])
+                log.info("Default checkpoint %r not available; falling back to %r", default_ckpt, effective_ckpt)
+                kwargs["ckpt_name"] = effective_ckpt
     last_ckpt = last_ckpt_by_model.get(model_key)
     if not workflow_changed and last_ckpt is not None and last_ckpt != effective_ckpt:
         log.info("Switching checkpoint %s -> %s; freeing memory", last_ckpt, effective_ckpt)
@@ -604,8 +620,8 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
     apply_spec(api_workflow, spec, **kwargs)
 
     # Capture the exact parameters actually used, so the output embed can
-    # display the seed, steps and CFG.
-    meta = {"seed": kwargs["seed"]}
+    # display the seed, steps and CFG (and the checkpoint actually run).
+    meta = {"seed": kwargs["seed"], "ckpt_name": effective_ckpt}
     if spec.get("steps_node") is not None:
         meta["steps"] = api_workflow[str(spec["steps_node"])]["inputs"].get("steps")
     if spec.get("cfg_node") is not None:
@@ -1258,7 +1274,7 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
         for i, img in enumerate(images):
             img_bytes, ext = compress_image(img)
             files.append(discord.File(io.BytesIO(img_bytes), filename=f"{model}_t2i_{i}{ext}"))
-        display_model = gen_kwargs.get("ckpt_name") or model
+        display_model = meta.get("ckpt_name") or gen_kwargs.get("ckpt_name") or model
         base_lines = [f"**Model:** {display_model}", f"**Prompt:** {prompt}"]
         if model == "ideogram":
             quality = gen_kwargs.get("quality")
@@ -1350,7 +1366,7 @@ async def ideogram(interaction: discord.Interaction, prompt: str,
 
 
 @bot.tree.command(name="sdxl", description="Generate an image with SDXL or any checkpoint in models/checkpoints")
-@app_commands.choices(model=SDXL_CHECKPOINT_CHOICES)
+@app_commands.autocomplete(model=_sdxl_model_autocomplete)
 @app_commands.describe(prompt="Text prompt")
 @app_commands.describe(model="Checkpoint in models/checkpoints (optional)")
 @app_commands.describe(negative="Negative prompt")
