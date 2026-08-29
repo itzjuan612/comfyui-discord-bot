@@ -486,14 +486,28 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
 
     ckpt_name = kwargs.get("ckpt_name")
     if ckpt_name is not None:
-        # Point the checkpoint loader at the requested file. Works with any
-        # checkpoint present in ComfyUI's models/checkpoints folder.
+        # Point the model loader at the requested file. Works with SDXL
+        # checkpoints (models/checkpoints) and with UNet/DiT model files.
+        # Node type -> input key used to name the model file.
+        loader_keys = {
+            "CheckpointLoaderSimple": "ckpt_name",
+            "UNETLoader": "unet_name",
+            "SeedVR2LoadDiTModel": "model",
+            "FlashVSRNode": "model",
+        }
+        # Ideogram has two UNet loaders (conditional + unconditional); the
+        # spec's model_node pins which one a default_model refers to.
+        model_node = spec.get("model_node")
         for nid, node in workflow.items():
-            if node.get("class_type") == "CheckpointLoaderSimple":
-                node["inputs"]["ckpt_name"] = ckpt_name
-                break
+            key = loader_keys.get(node.get("class_type"))
+            if key is None:
+                continue
+            if model_node is not None and str(nid) != str(model_node):
+                continue
+            node["inputs"][key] = ckpt_name
+            break
         else:
-            raise ValueError("Workflow has no CheckpointLoaderSimple node; cannot select a checkpoint.")
+            raise ValueError(f"Workflow has no model-loader node; cannot select model {ckpt_name!r}.")
 
     prompt = kwargs.get("prompt")
     negative = kwargs.get("negative")
@@ -590,26 +604,38 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
     workflow = load_workflow(spec["file"])
     api_workflow = graph_to_api(workflow) if "nodes" in workflow else workflow
 
-    # Determine the effective checkpoint. If the user didn't choose one, use
-    # the workflow's default. If that default file doesn't exist in ComfyUI's
-    # models/checkpoints folder, fall back to an available checkpoint
-    # (preferring one whose name contains "sdxl").
+    # Determine the effective model file. Priority: explicit request
+    # (ckpt_name) > config default_model > the workflow's own value. The
+    # checkpoints-availability fallback applies only to SDXL, whose files live
+    # in models/checkpoints (UNet/DiT models live in different folders).
     effective_ckpt = kwargs.get("ckpt_name")
     if effective_ckpt is None:
-        default_ckpt = None
-        for node in api_workflow.values():
-            if node.get("class_type") == "CheckpointLoaderSimple":
-                default_ckpt = node["inputs"].get("ckpt_name")
-                break
+        default_ckpt = spec.get("default_model")
+        if default_ckpt is None:
+            for node in api_workflow.values():
+                if node.get("class_type") in ("CheckpointLoaderSimple", "UNETLoader", "SeedVR2LoadDiTModel", "FlashVSRNode"):
+                    key = {"CheckpointLoaderSimple": "ckpt_name", "UNETLoader": "unet_name",
+                           "SeedVR2LoadDiTModel": "model", "FlashVSRNode": "model"}.get(node["class_type"])
+                    if key and node["inputs"].get(key):
+                        default_ckpt = node["inputs"][key]
+                        break
         if default_ckpt is not None:
-            try:
-                available = await comfy.fetch_checkpoints()
-            except Exception as exc:
-                log.warning("Could not list checkpoints for fallback: %s", exc)
-                available = []
-            if available and default_ckpt not in available:
-                effective_ckpt = next((c for c in available if "sdxl" in c.lower()), available[0])
-                log.info("Default checkpoint %r not available; falling back to %r", default_ckpt, effective_ckpt)
+            if model_key == "sdxl":
+                try:
+                    available = await comfy.fetch_checkpoints()
+                except Exception as exc:
+                    log.warning("Could not list checkpoints for fallback: %s", exc)
+                    available = []
+                if available and default_ckpt not in available:
+                    effective_ckpt = next((c for c in available if "sdxl" in c.lower()), available[0])
+                    log.info("Default checkpoint %r not available; falling back to %r", default_ckpt, effective_ckpt)
+                else:
+                    effective_ckpt = default_ckpt
+                kwargs["ckpt_name"] = effective_ckpt
+            else:
+                # UNet/DiT models live in different folders, so no availability
+                # check — trust the config value (falling back to the workflow).
+                effective_ckpt = default_ckpt
                 kwargs["ckpt_name"] = effective_ckpt
     last_ckpt = last_ckpt_by_model.get(model_key)
     if not workflow_changed and last_ckpt is not None and last_ckpt != effective_ckpt:
@@ -1556,6 +1582,22 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
     if cfg is None:
         cfg = settings["cfg"]
 
+    # Per-user default SDXL checkpoint (set via /settings). Used only by
+    # /sdxl when no explicit model is passed; silently ignored if unavailable.
+    if model is None:
+        saved = settings.get("sdxl_checkpoint")
+        if saved:
+            try:
+                available = await comfy.fetch_checkpoints()
+            except Exception as exc:
+                log.warning("Could not list checkpoints: %s", exc)
+                available = None
+            if available is not None:
+                if saved in available:
+                    model = saved
+                else:
+                    log.info("Saved SDXL checkpoint %r not available; using workflow default.", saved)
+
     # Optional checkpoint selection: any file in ComfyUI's models/checkpoints
     # folder can be used instead of the workflow's default checkpoint.
     if model is not None:
@@ -2103,6 +2145,7 @@ def meta_lines(meta: dict) -> list[str]:
 @app_commands.describe(img2img_sampler="Default img2img sampler")
 @app_commands.describe(img2img_megapixels="Default img2img resolution in megapixels")
 @app_commands.describe(stealth="Default privacy (ephemeral) for all your generations")
+@app_commands.describe(sdxl_checkpoint="Default SDXL checkpoint (models/checkpoints), used only by /sdxl")
 @app_commands.describe(view="Set to true to only view your current settings")
 async def settings(interaction: discord.Interaction,
                     positive_prompt: str | None = None,
@@ -2117,6 +2160,7 @@ async def settings(interaction: discord.Interaction,
                     img2img_sampler: str | None = None,
                     img2img_megapixels: int | None = None,
                     stealth: bool | None = None,
+                    sdxl_checkpoint: str | None = None,
                     view: bool = False):
     user_id = interaction.user.id
     await interaction.response.defer(ephemeral=True)
@@ -2128,6 +2172,7 @@ async def settings(interaction: discord.Interaction,
         or img2img_cfg is not None or img2img_steps is not None
         or img2img_sampler is not None or img2img_megapixels is not None
         or stealth is not None
+        or sdxl_checkpoint is not None
     ):
         s = user_settings.get_settings(user_id)
         await interaction.edit_original_response(
@@ -2150,6 +2195,7 @@ async def settings(interaction: discord.Interaction,
             "img2img_sampler": img2img_sampler,
             "img2img_megapixels": img2img_megapixels,
             "stealth": stealth,
+            "sdxl_checkpoint": sdxl_checkpoint,
         }.items() if v is not None
     }
     s = user_settings.set_settings(user_id, **updates)
