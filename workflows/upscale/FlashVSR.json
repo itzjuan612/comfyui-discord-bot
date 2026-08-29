@@ -1,0 +1,43 @@
+{
+  "9": {
+    "inputs": {
+      "filename_prefix": "FLASH-VSR_Upscaled",
+      "images": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Upscaled Image"
+    }
+  },
+  "10": {
+    "inputs": {
+      "model": "FlashVSR-v1.1",
+      "mode": "full",
+      "scale": 3,
+      "tiled_vae": true,
+      "tiled_dit": true,
+      "unload_dit": true,
+      "seed": 695143051193126,
+      "frames": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "FlashVSRNode",
+    "_meta": {
+      "title": "FlashVSR UltraFast Upscaler (Auto-downloads model)"
+    }
+  },
+  "13": {
+    "inputs": {
+      "image": "ComfyUI_00051_.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Cargar Imagen"
+    }
+  }
+}

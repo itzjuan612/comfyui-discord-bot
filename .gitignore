@@ -1,0 +1,11 @@
+# Secrets & local config
+config.yaml
+
+# Runtime data
+*.db
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
