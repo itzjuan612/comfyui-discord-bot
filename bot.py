@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import discord
@@ -22,6 +23,7 @@ import cogs.settings
 
 from ui.views import GenerationView
 from http_session import close_session
+from llm_client import refresh_llm_models, llm_model_refresh_loop
 
 
 @bot.event
@@ -44,3 +46,7 @@ async def on_ready():
         persistent_view.is_persistent(), persistent_view.is_dispatchable(),
     )
     print(f"Bot ready. T2I models: {T2I_MODELS}, Upscale models: {UPSCALE_MODELS}, I2I models: {I2I_MODELS}")
+    # Fetch the LLM model list in the background so startup is never blocked
+    # by the LLM endpoint, and keep it refreshed on a schedule.
+    asyncio.create_task(refresh_llm_models(force=True))
+    asyncio.create_task(llm_model_refresh_loop())

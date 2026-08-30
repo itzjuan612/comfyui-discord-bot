@@ -3,13 +3,13 @@ from discord import app_commands
 
 from bot import bot
 from core import config, log, ban_guard, check_cooldown, nsfw_blocked, schedule_message_deletion, reply_error, ASPECT_RATIO_CHOICES
-from llm_client import fetch_llm_models, llm_model_load, probe_reasoning_efforts, LLM_MODEL_CHOICES
+from llm_client import fetch_llm_models, llm_model_load, probe_reasoning_efforts, llm_model_autocomplete
 from ui.views import ThinkingView
 
 
 @bot.tree.command(name="gen_prompt", description="Convert a natural-language prompt into an Ideogram 4 JSON caption prompt")
 @app_commands.choices(aspect_ratio=ASPECT_RATIO_CHOICES)
-@app_commands.choices(model=LLM_MODEL_CHOICES)
+@app_commands.autocomplete(model=llm_model_autocomplete)
 @app_commands.describe(prompt="Natural-language prompt to convert")
 @app_commands.describe(megapixels="Target resolution in megapixels")
 @app_commands.describe(model="LLM model to use (see /llm_models)")

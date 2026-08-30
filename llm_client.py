@@ -5,7 +5,7 @@ import discord
 from discord import app_commands
 
 from core import log, config, comfy, ComfyUIError
-from http_session import get_session, close_session
+from http_session import get_session
 
 
 def llm_base_url() -> str:
@@ -47,7 +47,8 @@ async def fetch_llm_models() -> list[str]:
     data = None
     session = get_session()
     try:
-        async with session.get(llm_base_url() + "/api/v1/models", headers=headers) as resp:
+        async with session.get(llm_base_url() + "/api/v1/models", headers=headers,
+                                timeout=aiohttp.ClientTimeout(total=15)) as resp:
             if resp.status == 200:
                 data = await resp.json()
             else:
@@ -57,7 +58,8 @@ async def fetch_llm_models() -> list[str]:
     if data is None:
         # Endpoint not available (non-LM-Studio server) or malformed response;
         # fall back to the standard OpenAI models endpoint.
-        async with session.get(llm_base_url() + "/v1/models", headers=headers) as resp:
+        async with session.get(llm_base_url() + "/v1/models", headers=headers,
+                               timeout=aiohttp.ClientTimeout(total=15)) as resp:
             resp.raise_for_status()
             data = await resp.json()
     if "models" in data:
@@ -247,25 +249,69 @@ async def resolve_reasoning_effort(model: str, thinking: str | None, llm_cfg: di
     return None
 
 
-def _llm_model_choices() -> list[app_commands.Choice]:
-    """Best-effort model autocomplete list; empty if the endpoint is unreachable."""
+# Global cache of the LLM model list, fetched lazily (see refresh_llm_models).
+# "models" holds the ids; "fetched_at" is the loop time of the last successful fetch.
+llm_model_cache: dict = {"models": [], "fetched_at": None}
+
+# How long a cached model list is considered fresh before re-fetching.
+LLM_MODEL_TTL_SECONDS = 300.0
+
+
+async def refresh_llm_models(force: bool = False) -> list[str]:
+    """Fetch the LLM model list into the global cache.
+
+    Called once at startup (from ``on_ready``, as a background task) and
+    periodically by ``llm_model_refresh_loop``. Failures keep the previous
+    cache so a transient endpoint outage never breaks slash-command
+    autocomplete.
+    """
+    global llm_model_cache
+    now = asyncio.get_running_loop().time()
+    if not force and llm_model_cache["fetched_at"] is not None:
+        if now - llm_model_cache["fetched_at"] < LLM_MODEL_TTL_SECONDS:
+            return llm_model_cache["models"]
     try:
-        async def _fetch():
-            try:
-                return await fetch_llm_models()
-            finally:
-                # Close the session bound to this temporary event loop so it
-                # doesn't leak (even if the fetch fails); the bot's main loop
-                # will create its own session later.
-                await close_session()
-        models = asyncio.run(_fetch())
+        models = await fetch_llm_models()
     except Exception as exc:
-        log.warning("Could not fetch LLM model list at startup: %s", exc)
-        models = []
-    return [app_commands.Choice(name=m, value=m) for m in models]
+        log.warning("Could not refresh LLM model list: %s", exc)
+        return llm_model_cache["models"]
+    llm_model_cache = {"models": models, "fetched_at": now}
+    log.info("LLM model list refreshed: %d models", len(models))
+    return models
 
 
-LLM_MODEL_CHOICES = _llm_model_choices()
+async def get_llm_models() -> list[str]:
+    """Return cached model ids, fetching them first if the cache is stale."""
+    now = asyncio.get_running_loop().time()
+    if llm_model_cache["fetched_at"] is None or now - llm_model_cache["fetched_at"] >= LLM_MODEL_TTL_SECONDS:
+        await refresh_llm_models()
+    return llm_model_cache["models"]
+
+
+async def llm_model_refresh_loop() -> None:
+    """Refresh the cached model list every LLM_MODEL_TTL_SECONDS."""
+    while True:
+        await asyncio.sleep(LLM_MODEL_TTL_SECONDS)
+        await refresh_llm_models(force=True)
+
+
+async def llm_model_autocomplete(interaction: discord.Interaction, current_input: str):
+    """Dynamic autocomplete for /gen_prompt's ``model`` parameter.
+
+    Suggests LLM model ids from the cached list (fetched lazily and refreshed
+    on a schedule), filtered by what the user has typed so far.
+    """
+    try:
+        models = await get_llm_models()
+    except Exception as exc:
+        log.warning("Could not fetch LLM models for autocomplete: %s", exc)
+        return []
+    if current_input:
+        matches = [m for m in models if current_input.lower() in m.lower()]
+    else:
+        matches = models
+    # Discord allows at most 25 autocomplete choices.
+    return [app_commands.Choice(name=m, value=m) for m in matches[:25]]
 
 
 async def _sdxl_model_autocomplete(interaction: discord.Interaction, current_input: str):

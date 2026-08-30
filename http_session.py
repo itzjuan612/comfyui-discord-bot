@@ -8,11 +8,10 @@ This module provides a lazily-created session that is shared by all callers
 (ComfyUI API, LLM endpoint, Discord image downloads) and is closed once
 when the bot shuts down.
 
-The session is recreated whenever a different event loop is active. This
-matters because ``llm_client`` runs ``asyncio.run()`` at import time (to
-build the LLM model autocomplete list); a session created inside that
-temporary loop is unusable in the bot's main loop on aiohttp versions that
-bind the session to its creation loop.
+The session is recreated whenever a different event loop is active, e.g. if
+a session is created outside the bot's main loop (a transient or test loop)
+and then accessed from the main loop. aiohttp versions that bind a session
+to its creation loop make the old session unusable afterwards.
 """
 
 import asyncio
