@@ -33,25 +33,25 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 
 | Parameter | Description |
 | --- | --- |
-| prompt | Text prompt (required) |
-| seed | Seed (optional) |
-| quality | Ideogram preset: Turbo / Default / Quality |
-| megapixels | Target resolution in MP |
-| aspect_ratio | Aspect ratio preset |
-| stealth | Ephemeral output |
+| `prompt` | Text prompt (required) |
+| `seed` | Seed (optional) |
+| `quality` | Ideogram preset: Turbo / Default / Quality |
+| `megapixels` | Target resolution in MP |
+| `aspect_ratio` | Aspect ratio preset |
+| `stealth` | Ephemeral output |
 
 ### `/sdxl`
 
 | Parameter | Description |
 | --- | --- |
-| prompt | Text prompt (required) |
-| negative | Negative prompt |
-| seed | Seed (optional) |
-| steps | Sampling steps |
-| width / height | Dimensions, multiple of 64 |
-| cfg | Guidance scale |
-| model | Checkpoint filename in ComfyUI's `models/checkpoints` folder (optional; defaults to the workflow's checkpoint) |
-| stealth | Ephemeral output |
+| `prompt` | Text prompt (required) |
+| `negative` | Negative prompt |
+| `seed` | Seed (optional) |
+| `steps` | Sampling steps |
+| `width` / `height` | Dimensions, multiple of 64 |
+| `cfg` | Guidance scale |
+| `model` | Checkpoint filename in ComfyUI's `models/checkpoints` folder (optional; defaults to the workflow's checkpoint) |
+| `stealth` | Ephemeral output |
 
 **Any checkpoint:** Pass any file name present in ComfyUI's `models/checkpoints` folder via `model` to generate with a different checkpoint instead of the workflow's default. The bot verifies the file exists before running the workflow, and the embed reports the checkpoint actually used. Switching to a different checkpoint frees ComfyUI memory; reusing the same checkpoint does not. If the workflow's default checkpoint (e.g. `SDXL.safetensors`) is missing from `models/checkpoints`, the bot automatically falls back to an available checkpoint (preferring one whose name contains "sdxl") and the embed reports the checkpoint actually used. The `model` parameter uses dynamic autocomplete: as you type, the bot filters the live checkpoint list (cached for 60 seconds), so newly added checkpoint files appear without a bot restart or slash-command re-sync.
 
@@ -59,12 +59,12 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 
 | Parameter | Description |
 | --- | --- |
-| prompt | Natural-language idea to convert |
-| megapixels | Target resolution in MP |
-| aspect_ratio | Aspect ratio preset |
-| model | LLM model to use (see `/llm_models`) |
-| max_tokens | Max tokens (optional) |
-| temperature | LLM temperature 0-1 (optional) |
+| `prompt` | Natural-language idea to convert |
+| `megapixels` | Target resolution in MP |
+| `aspect_ratio` | Aspect ratio preset |
+| `model` | LLM model to use (see `/llm_models`) |
+| `max_tokens` | Max tokens (optional) |
+| `temperature` | LLM temperature 0-1 (optional) |
 
 After selecting the reasoning effort, the bot composes the prompt via the Ideogram prompt-gen workflow, calls the LLM, and posts the resulting JSON caption.
 
@@ -72,13 +72,13 @@ After selecting the reasoning effort, the bot composes the prompt via the Ideogr
 
 | Parameter | Description |
 | --- | --- |
-| model | `sdxl`, `seedvr2`, or `flashvsr` |
-| image | Image to upscale (attach from gallery) |
-| prompt | Optional guidance prompt |
-| negative | Optional negative prompt |
-| strength | Denoise strength 0-1 (SDXL only) |
-| scale | Upscale factor (e.g. 2 or 3) |
-| stealth | Ephemeral output |
+| `model` | `sdxl`, `seedvr2`, or `flashvsr` |
+| `image` | Image to upscale (attach from gallery) |
+| `prompt` | Optional guidance prompt |
+| `negative` | Optional negative prompt |
+| `strength` | Denoise strength 0-1 (SDXL only) |
+| `scale` | Upscale factor (e.g. 2 or 3) |
+| `stealth` | Ephemeral output |
 
 **SDXL checkpoint picker:** Choosing `sdxl` uploads your image, then shows an ephemeral picker listing every checkpoint in ComfyUI's `models/checkpoints` folder (plus a Default option that uses the workflow's own checkpoint). Selecting a checkpoint runs the SDXL upscale workflow with that checkpoint; the embed reports the checkpoint actually used. Switching to a different checkpoint frees ComfyUI memory; reusing the same one does not.
 
@@ -86,15 +86,15 @@ After selecting the reasoning effort, the bot composes the prompt via the Ideogr
 
 | Parameter | Description |
 | --- | --- |
-| workflow | `single` (1 image edit) or `multi` (2 images combine) |
-| image | First input image |
-| prompt | Description of the desired edit |
-| image2 | Second input image (required for multi) |
-| cfg | CFG (optional) |
-| steps | Steps (optional) |
-| sampler | Sampler name (optional) |
-| megapixels | Target MP (optional) |
-| stealth | Ephemeral output |
+| `workflow` | `single` (1 image edit) or `multi` (2 images combine) |
+| `image` | First input image |
+| `prompt` | Description of the desired edit |
+| `image2` | Second input image (required for multi) |
+| `cfg` | CFG (optional) |
+| `steps` | Steps (optional) |
+| `sampler` | Sampler name (optional) |
+| `megapixels` | Target MP (optional) |
+| `stealth` | Ephemeral output |
 
 ### `/settings` / `/reset_settings`
 
@@ -136,15 +136,15 @@ Key modules:
 
 | File | Role |
 | --- | --- |
-| main.py | Entry point: inits the SQLite DBs, seeds the owner, and runs the bot (`python main.py`) |
-| bot.py | Shared bot instance: creates the Bot, imports the cogs (slash commands), defines `on_ready`, and closes the shared HTTP session on shutdown (`on_close`) |
-| http_session.py | Single shared `aiohttp.ClientSession` reused by all HTTP/WebSocket calls (ComfyUI, LLM, Discord image downloads); created lazily and closed on bot shutdown |
-| comfyui_client.py | Async HTTP/WS client for ComfyUI (`/prompt`, `/history`, `/view`, `/upload/image`, `/free`) |
-| config_loader.py | Loads `config.yaml` (auto-generates it with defaults if missing) |
-| user_settings.py | Per-user defaults (SQLite) |
-| generation_store.py | Persisted generation params per message (SQLite) |
-| moderation.py | Admin/ban lists (SQLite) |
-| nsfw_guard.py | Keyword + ONNX image NSFW classifier |
+| `main.py` | Entry point: inits the SQLite DBs, seeds the owner, and runs the bot (`python main.py`) |
+| `bot.py` | Shared bot instance: creates the Bot, imports the cogs (slash commands), defines `on_ready`, and closes the shared HTTP session on shutdown (`on_close`) |
+| `http_session.py` | Single shared `aiohttp.ClientSession` reused by all HTTP/WebSocket calls (ComfyUI, LLM, Discord image downloads); created lazily and closed on bot shutdown |
+| `comfyui_client.py` | Async HTTP/WS client for ComfyUI (`/prompt`, `/history`, `/view`, `/upload/image`, `/free`) |
+| `config_loader.py` | Loads `config.yaml` (auto-generates it with defaults if missing) |
+| `user_settings.py` | Per-user defaults (SQLite) |
+| `generation_store.py` | Persisted generation params per message (SQLite) |
+| `moderation.py` | Admin/ban lists (SQLite) |
+| `nsfw_guard.py` | Keyword + ONNX image NSFW classifier |
 
 ## Setup
 
@@ -196,9 +196,9 @@ Clone these repositories into ComfyUI's `custom_nodes/` folder:
 
 | Custom Node | GitHub | Used By |
 | --- | --- | --- |
-| ComfyUI-SeedVR2_VideoUpscaler | https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler | SeedVR2 upscale workflow |
-| ComfyUI-FlashVSR_Ultra_Fast | https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast/ | FlashVSR upscale workflow |
-| KJNodes for ComfyUI | https://github.com/kijai/ComfyUI-KJNodes | Ideogram 4 generator & prompt-gen workflow (provides `ResolutionSelector`, `CustomCombo`, `Ideogram4Scheduler`, `DualModelGuider`, `CFGOverride`, `ReferenceLatent`, `EmptyFlux2LatentImage`, `Flux2Scheduler`, `ImageScaleToTotalPixels`, `GetImageSize`, `Random Number`) |
+| `ComfyUI-SeedVR2_VideoUpscaler` | https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler | SeedVR2 upscale workflow |
+| `ComfyUI-FlashVSR_Ultra_Fast` | https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast/ | FlashVSR upscale workflow |
+| `KJNodes for ComfyUI` | https://github.com/kijai/ComfyUI-KJNodes | Ideogram 4 generator & prompt-gen workflow (provides `ResolutionSelector`, `CustomCombo`, `Ideogram4Scheduler`, `DualModelGuider`, `CFGOverride`, `ReferenceLatent`, `EmptyFlux2LatentImage`, `Flux2Scheduler`, `ImageScaleToTotalPixels`, `GetImageSize`, `Random Number`) |
 
 ```bash
 cd ComfyUI/custom_nodes
@@ -213,17 +213,17 @@ Place these in ComfyUI's `models/` directories:
 
 | Model File | Location | Used By |
 | --- | --- | --- |
-| SDXL.safetensors | models/checkpoints/ | SDXL text-to-image & SDXL upscale (any SDXL checkpoint works) |
-| ideogram4_fp8_scaled.safetensors | models/unet/ (or models/diffusion_models/) | Ideogram 4 text-to-image |
-| ideogram4_unconditional_fp8_scaled.safetensors | models/unet/ | Ideogram 4 (unconditional branch) |
-| flux2-vae.safetensors | models/vae/ | Ideogram 4 VAE |
-| qwen3vl_8b_fp8_scaled.safetensors | models/clip/ | Ideogram 4 CLIP |
-| flux-2-klein-base-4b-fp8.safetensors | models/unet/ | Flux 2 Klein 4B img2img |
-| full_encoder_small_decoder.safetensors | models/vae/ | Flux 2 Klein VAE |
-| qwen_3_4b.safetensors | models/clip/ | Flux 2 Klein CLIP |
-| seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors | models/ (auto-downloaded by node) | SeedVR2 upscale |
-| ema_vae_fp16.safetensors | models/ (auto-downloaded by node) | SeedVR2 VAE |
-| FlashVSR-v1.1 | auto-downloaded by the FlashVSR node | FlashVSR upscale |
+| `SDXL.safetensors` | models/checkpoints/ | SDXL text-to-image & SDXL upscale (any SDXL checkpoint works) |
+| `ideogram4_fp8_scaled.safetensors` | models/unet/ (or models/diffusion_models/) | Ideogram 4 text-to-image |
+| `ideogram4_unconditional_fp8_scaled.safetensors` | models/unet/ | Ideogram 4 (unconditional branch) |
+| `flux2-vae.safetensors` | models/vae/ | Ideogram 4 VAE |
+| `qwen3vl_8b_fp8_scaled.safetensors` | models/clip/ | Ideogram 4 CLIP |
+| `flux-2-klein-base-4b-fp8.safetensors` | models/unet/ | Flux 2 Klein 4B img2img |
+| `full_encoder_small_decoder.safetensors` | models/vae/ | Flux 2 Klein VAE |
+| `qwen_3_4b.safetensors` | models/clip/ | Flux 2 Klein CLIP |
+| `seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors` | models/ (auto-downloaded by node) | SeedVR2 upscale |
+| `ema_vae_fp16.safetensors` | models/ (auto-downloaded by node) | SeedVR2 VAE |
+| `FlashVSR-v1.1` | auto-downloaded by the FlashVSR node | FlashVSR upscale |
 
 Note: SeedVR2 and FlashVSR nodes can auto-download their weights on first use. The other models must be placed manually.
 
@@ -269,9 +269,9 @@ Three SQLite databases are created automatically in the project folder:
 
 | Database | Purpose |
 | --- | --- |
-| user_settings.db | Per-user default prompts, CFG, steps, sampler, stealth, etc. |
-| generations.db | Stores generation parameters per Discord message ID (for retry/delete) |
-| moderation.db | Admin and ban lists |
+| `user_settings.db` | Per-user default prompts, CFG, steps, sampler, stealth, etc. |
+| `generations.db` | Stores generation parameters per Discord message ID (for retry/delete) |
+| `moderation.db` | Admin and ban lists |
 
 ## File Structure
 
