@@ -121,6 +121,7 @@ View or update per-user defaults:
 - `ideogram_quality`, `ideogram_megapixels`, `ideogram_aspect_ratio`
 - `img2img_cfg`, `img2img_steps`, `img2img_sampler`, `img2img_megapixels`
 - `stealth` (default privacy)
+- `sdxl_checkpoint`
 
 ### `/flush`
 
