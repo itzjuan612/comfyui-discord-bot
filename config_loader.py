@@ -129,6 +129,58 @@ def _generate_default_config(path: str) -> None:
     print("[config] Edit it to set your Discord token, ComfyUI URL, and LLM endpoint.")
 
 
+# Default model files for each workflow, keyed by model name -> workflow type.
+# Older config.yaml files may lack these keys; backfill them so the bot
+# applies explicit defaults instead of relying on the workflow's built-in values.
+WORKFLOW_MODEL_DEFAULTS = {
+    "sdxl": {
+        "t2i": {"default_model": "SDXL.safetensors"},
+        "upscale": {"default_model": "SDXL.safetensors"},
+    },
+    "seedvr2": {
+        "upscale": {
+            "default_model": "seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors"
+        },
+    },
+    "flashvsr": {
+        "upscale": {"default_model": "FlashVSR-v1.1"},
+    },
+    "flux2_klein": {
+        "i2i_single": {"default_model": "flux-2-klein-base-4b-fp8.safetensors"},
+        "i2i_multi": {"default_model": "flux-2-klein-base-4b-fp8.safetensors"},
+    },
+    "ideogram": {
+        "t2i": {
+            "default_model": "ideogram4_fp8_scaled.safetensors",
+            "model_node": "98:23",
+            "default_model_unconditional": "ideogram4_unconditional_fp8_scaled.safetensors",
+            "model_node_unconditional": "98:154",
+        },
+    },
+}
+
+
+def _backfill_model_defaults(config: dict) -> None:
+    """Fill in missing model-default keys for every workflow (in place).
+
+    Existing values are never overwritten, so user overrides are preserved.
+    Only workflows already present in the config get backfilled.
+    """
+    models = config.get("models") or {}
+    for model_name, workflow in models.items():
+        if not isinstance(workflow, dict):
+            continue
+        defaults_by_type = WORKFLOW_MODEL_DEFAULTS.get(model_name)
+        if not defaults_by_type:
+            continue
+        for workflow_type, defaults in defaults_by_type.items():
+            spec = workflow.get(workflow_type)
+            if not isinstance(spec, dict):
+                continue
+            for key, value in defaults.items():
+                spec.setdefault(key, value)
+
+
 def load_config(path: str | None = None) -> dict:
     if path is None:
         path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
@@ -137,4 +189,6 @@ def load_config(path: str | None = None) -> dict:
         _generate_default_config(path)
 
     with open(path) as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f) or {}
+    _backfill_model_defaults(config)
+    return config
