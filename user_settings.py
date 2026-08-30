@@ -1,6 +1,8 @@
 import os
 import sqlite3
+import threading
 import logging
+from contextlib import contextmanager
 
 log = logging.getLogger("user_settings")
 
@@ -37,16 +39,37 @@ MIGRATED_COLUMNS = {
 }
 
 
+_conn: sqlite3.Connection | None = None
+_conn_lock = threading.Lock()
+
+
 def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    """Return the persistent connection, creating it once (thread-safe)."""
+    global _conn
+    if _conn is None:
+        with _conn_lock:
+            if _conn is None:
+                conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+                conn.execute("PRAGMA journal_mode=WAL")
+                _conn = conn
+    return _conn
+
+
+@contextmanager
+def _locked_conn():
+    """Yield the persistent connection while holding the module lock.
+
+    Serializes all access on the single shared connection so sqlite3 is
+    thread-safe and per-query connect/close overhead is eliminated.
+    """
+    conn = _connect()
+    with _conn_lock:
+        yield conn
 
 
 def init_db() -> None:
     """Create the schema on first run and migrate older databases."""
-    conn = _connect()
-    try:
+    with _locked_conn() as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_settings (
@@ -63,14 +86,11 @@ def init_db() -> None:
             if col not in existing:
                 conn.execute(f"ALTER TABLE user_settings ADD COLUMN {col} {sql_type}")
         conn.commit()
-    finally:
-        conn.close()
 
 
 def get_settings(discord_id: int) -> dict:
     """Return a user's stored defaults."""
-    conn = _connect()
-    try:
+    with _locked_conn() as conn:
         row = conn.execute(
             "SELECT positive_prompt, negative_prompt, cfg, steps, "
             "ideogram_quality, ideogram_megapixels, ideogram_aspect_ratio, "
@@ -78,8 +98,6 @@ def get_settings(discord_id: int) -> dict:
             "FROM user_settings WHERE discord_id = ?",
             (discord_id,),
         ).fetchone()
-    finally:
-        conn.close()
     if row is None:
         return {
             "positive_prompt": "", "negative_prompt": "",
@@ -96,8 +114,7 @@ def get_settings(discord_id: int) -> dict:
 def set_settings(discord_id: int, **values) -> dict:
     """Upsert one or more settings for a user and return the full record."""
     updates = {k: v for k, v in values.items() if k in SETTINGS_FIELDS}
-    conn = _connect()
-    try:
+    with _locked_conn() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO user_settings (discord_id) VALUES (?)",
             (discord_id,),
@@ -109,15 +126,12 @@ def set_settings(discord_id: int, **values) -> dict:
                 (*updates.values(), discord_id),
             )
         conn.commit()
-    finally:
-        conn.close()
     return get_settings(discord_id)
 
 
 def reset_settings(discord_id: int) -> dict:
     """Clear all stored defaults for a user."""
-    conn = _connect()
-    try:
+    with _locked_conn() as conn:
         conn.execute(
             "UPDATE user_settings "
             "SET positive_prompt = '', negative_prompt = '', cfg = NULL, steps = NULL, "
@@ -128,8 +142,6 @@ def reset_settings(discord_id: int) -> dict:
             (discord_id,),
         )
         conn.commit()
-    finally:
-        conn.close()
     return get_settings(discord_id)
 
 
