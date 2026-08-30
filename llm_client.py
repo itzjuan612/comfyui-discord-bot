@@ -5,6 +5,7 @@ import discord
 from discord import app_commands
 
 from core import log, config, comfy, ComfyUIError
+from http_session import get_session, close_session
 
 
 def llm_base_url() -> str:
@@ -44,22 +45,21 @@ async def fetch_llm_models() -> list[str]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     data = None
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(llm_base_url() + "/api/v1/models", headers=headers) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                else:
-                    data = None
-        except Exception:
-            data = None
+    session = get_session()
+    try:
+        async with session.get(llm_base_url() + "/api/v1/models", headers=headers) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+            else:
+                data = None
+    except Exception:
+        data = None
     if data is None:
         # Endpoint not available (non-LM-Studio server) or malformed response;
         # fall back to the standard OpenAI models endpoint.
-        async with aiohttp.ClientSession() as session:
-            async with session.get(llm_base_url() + "/v1/models", headers=headers) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
+        async with session.get(llm_base_url() + "/v1/models", headers=headers) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
     if "models" in data:
         # LM Studio shape: use "key" as the id, skip non-chat (embedding) models.
         return [
@@ -85,14 +85,14 @@ async def llm_model_load(model: str) -> bool:
         headers["Authorization"] = f"Bearer {token}"
     url = llm_base_url() + "/api/v1/models/load"
     try:
-        async with aiohttp.ClientSession() as session:
-            # LM Studio expects {"model": <key>} (not "id").
-            async with session.post(url, json={"model": model}, headers=headers,
-                                    timeout=aiohttp.ClientTimeout(total=300)) as resp:
-                if resp.status in (404, 405):
-                    log.info("LLM endpoint has no /api/v1/models/load; skipping load for %r", model)
-                    return False
-                resp.raise_for_status()
+        session = get_session()
+        # LM Studio expects {"model": <key>} (not "id").
+        async with session.post(url, json={"model": model}, headers=headers,
+                                timeout=aiohttp.ClientTimeout(total=300)) as resp:
+            if resp.status in (404, 405):
+                log.info("LLM endpoint has no /api/v1/models/load; skipping load for %r", model)
+                return False
+            resp.raise_for_status()
         log.info("Loaded LLM model %r", model)
         return True
     except Exception as exc:
@@ -113,14 +113,14 @@ async def llm_model_unload(model: str) -> bool:
         headers["Authorization"] = f"Bearer {token}"
     url = llm_base_url() + "/api/v1/models/unload"
     try:
-        async with aiohttp.ClientSession() as session:
-            # LM Studio expects {"instance_id": <key>} (not "id").
-            async with session.post(url, json={"instance_id": model}, headers=headers,
-                                    timeout=aiohttp.ClientTimeout(total=300)) as resp:
-                if resp.status in (404, 405):
-                    log.info("LLM endpoint has no /api/v1/models/unload; skipping unload for %r", model)
-                    return False
-                resp.raise_for_status()
+        session = get_session()
+        # LM Studio expects {"instance_id": <key>} (not "id").
+        async with session.post(url, json={"instance_id": model}, headers=headers,
+                                timeout=aiohttp.ClientTimeout(total=300)) as resp:
+            if resp.status in (404, 405):
+                log.info("LLM endpoint has no /api/v1/models/unload; skipping unload for %r", model)
+                return False
+            resp.raise_for_status()
         log.info("Unloaded LLM model %r", model)
         return True
     except Exception as exc:
@@ -159,26 +159,26 @@ async def call_llm(prompt: str, model: str, max_tokens: int | None = None,
         payload["reasoning_effort"] = reasoning_effort
     url = llm_base_url() + "/v1/chat/completions"
     log.debug("call_llm payload: %s", payload)
-    async with aiohttp.ClientSession() as session:
-        for _attempt in range(2):
-            async with session.post(
-                url, json=payload, headers=headers,
-                timeout=aiohttp.ClientTimeout(total=timeout),
-            ) as resp:
-                data = await resp.json()
-                if resp.status == 400 and "reasoning_effort" in payload:
-                    # Endpoint rejected the reasoning effort; retry once
-                    # without it so the model falls back to its native default.
-                    log.info("reasoning_effort rejected by endpoint; retrying without it")
-                    payload.pop("reasoning_effort")
-                    continue
-                log.debug("call_llm usage: %s", data.get("usage"))
-                if resp.status >= 400:
-                    raise ComfyUIError(f"LLM request failed (HTTP {resp.status}): {data}")
-                choices = data.get("choices")
-                if not choices:
-                    raise ComfyUIError("LLM endpoint returned no choices")
-                return choices[0]["message"]["content"]
+    session = get_session()
+    for _attempt in range(2):
+        async with session.post(
+            url, json=payload, headers=headers,
+            timeout=aiohttp.ClientTimeout(total=timeout),
+        ) as resp:
+            data = await resp.json()
+            if resp.status == 400 and "reasoning_effort" in payload:
+                # Endpoint rejected the reasoning effort; retry once
+                # without it so the model falls back to its native default.
+                log.info("reasoning_effort rejected by endpoint; retrying without it")
+                payload.pop("reasoning_effort")
+                continue
+            log.debug("call_llm usage: %s", data.get("usage"))
+            if resp.status >= 400:
+                raise ComfyUIError(f"LLM request failed (HTTP {resp.status}): {data}")
+            choices = data.get("choices")
+            if not choices:
+                raise ComfyUIError("LLM endpoint returned no choices")
+            return choices[0]["message"]["content"]
 
 
 REASONING_EFFORT_CANDIDATES = ("low", "medium", "high", "xhigh", "on", "off")
@@ -202,28 +202,28 @@ async def probe_reasoning_efforts(model: str) -> list[str]:
         headers["Authorization"] = f"Bearer {token}"
     url = llm_base_url() + "/v1/chat/completions"
     supported: list[str] = []
-    async with aiohttp.ClientSession() as session:
-        for effort in REASONING_EFFORT_CANDIDATES:
-            payload = {
-                "model": model,
-                "messages": [{"role": "user", "content": "Say ok."}],
-                "max_tokens": 1,
-                "reasoning_effort": effort,
-            }
-            try:
-                async with session.post(
-                    url, json=payload, headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                ) as resp:
-                    log.debug("Probe reasoning_effort=%r for %r: HTTP %s", effort, model, resp.status)
-                    if resp.status >= 400:
-                        await resp.release()
-                        continue
+    session = get_session()
+    for effort in REASONING_EFFORT_CANDIDATES:
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": "Say ok."}],
+            "max_tokens": 1,
+            "reasoning_effort": effort,
+        }
+        try:
+            async with session.post(
+                url, json=payload, headers=headers,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                log.debug("Probe reasoning_effort=%r for %r: HTTP %s", effort, model, resp.status)
+                if resp.status >= 400:
                     await resp.release()
-                    supported.append(effort)
-            except Exception as exc:
-                log.warning("Probe reasoning_effort=%r failed: %s", effort, exc)
-                continue
+                    continue
+                await resp.release()
+                supported.append(effort)
+        except Exception as exc:
+            log.warning("Probe reasoning_effort=%r failed: %s", effort, exc)
+            continue
     reasoning_effort_cache[model] = supported
     log.info("Reasoning effort probe: model %r supports %s", model, supported or "(none)")
     return supported
@@ -250,7 +250,15 @@ async def resolve_reasoning_effort(model: str, thinking: str | None, llm_cfg: di
 def _llm_model_choices() -> list[app_commands.Choice]:
     """Best-effort model autocomplete list; empty if the endpoint is unreachable."""
     try:
-        models = asyncio.run(fetch_llm_models())
+        async def _fetch():
+            try:
+                return await fetch_llm_models()
+            finally:
+                # Close the session bound to this temporary event loop so it
+                # doesn't leak (even if the fetch fails); the bot's main loop
+                # will create its own session later.
+                await close_session()
+        models = asyncio.run(_fetch())
     except Exception as exc:
         log.warning("Could not fetch LLM model list at startup: %s", exc)
         models = []

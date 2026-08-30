@@ -21,6 +21,13 @@ import cogs.admin
 import cogs.settings
 
 from ui.views import GenerationView
+from http_session import close_session
+
+
+@bot.event
+async def on_close():
+    """Close the shared aiohttp session when the bot shuts down."""
+    await close_session()
 
 
 @bot.event

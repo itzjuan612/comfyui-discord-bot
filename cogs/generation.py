@@ -1,11 +1,11 @@
 import io
 
-import aiohttp
 from PIL import Image
 import discord
 from discord import app_commands
 
 from bot import bot
+from http_session import get_session
 from core import (
     config, comfy, log, user_settings, generation_store, nsfw_guard, moderation,
     compress_image, meta_lines, image_resolution, uuid_hex,
@@ -276,10 +276,10 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
 
     image_url = str(image.url)
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(image_url) as resp:
-                resp.raise_for_status()
-                data = await resp.read()
+        session = get_session()
+        async with session.get(image_url) as resp:
+            resp.raise_for_status()
+            data = await resp.read()
         input_longest_side = None
         if scale is not None:
             # SeedVR2 targets absolute pixels, so we need the input image size.
@@ -435,17 +435,16 @@ async def img2img(interaction: discord.Interaction, workflow: str,
 
     # Download and upload the input image(s) to ComfyUI.
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(str(image.url)) as resp:
-                resp.raise_for_status()
-                data1 = await resp.read()
+        session = get_session()
+        async with session.get(str(image.url)) as resp:
+            resp.raise_for_status()
+            data1 = await resp.read()
         uploaded1 = await comfy.upload_image(data1, f"discord_{uuid_hex()}.png")
         uploaded_files = [uploaded1]
         if need_two:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(str(image2.url)) as resp:
-                    resp.raise_for_status()
-                    data2 = await resp.read()
+            async with session.get(str(image2.url)) as resp:
+                resp.raise_for_status()
+                data2 = await resp.read()
             uploaded2 = await comfy.upload_image(data2, f"discord_{uuid_hex()}.png")
             uploaded_files.append(uploaded2)
     except Exception as exc:

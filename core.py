@@ -9,7 +9,6 @@ import random
 import subprocess
 import sys
 
-import aiohttp
 from PIL import Image
 import discord
 from discord import app_commands

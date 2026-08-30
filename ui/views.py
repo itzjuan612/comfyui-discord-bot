@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 
-import aiohttp
+from http_session import get_session
 from PIL import Image
 import discord
 from discord.ui import View, Button, Modal, TextInput, Select
@@ -379,10 +379,10 @@ class UpscaleButton(Button):
             return
         source = image_attachments[0]
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(source.url) as resp:
-                    resp.raise_for_status()
-                    data = await resp.read()
+            session = get_session()
+            async with session.get(source.url) as resp:
+                resp.raise_for_status()
+                data = await resp.read()
         except Exception as exc:
             log.warning("Could not download source image: %s", exc)
             await interaction.response.send_message(
@@ -507,10 +507,10 @@ class EditImageModal(Modal):
             megapixels = saved.get("img2img_megapixels")
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(image_attachments[0].url) as resp:
-                    resp.raise_for_status()
-                    data1 = await resp.read()
+            session = get_session()
+            async with session.get(image_attachments[0].url) as resp:
+                resp.raise_for_status()
+                data1 = await resp.read()
             uploaded1 = await comfy.upload_image(data1, f"discord_{uuid_hex()}.png")
         except Exception as exc:
             progress.done = True

@@ -6,6 +6,8 @@ import uuid
 
 import aiohttp
 
+from http_session import get_session
+
 log = logging.getLogger("comfyui_client")
 
 
@@ -33,12 +35,12 @@ class ComfyUIClient:
         """
         client_id = uuid.uuid4().hex
         payload = {"prompt": workflow, "client_id": client_id}
-        async with aiohttp.ClientSession() as session:
-            async with session.post(f"{self.base_url}/prompt", json=payload) as resp:
-                data = await resp.json()
-                if resp.status != 200 or "error" in data:
-                    raise ComfyUIError(data.get("error", f"HTTP {resp.status}"))
-                return data["prompt_id"], client_id
+        session = get_session()
+        async with session.post(f"{self.base_url}/prompt", json=payload) as resp:
+            data = await resp.json()
+            if resp.status != 200 or "error" in data:
+                raise ComfyUIError(data.get("error", f"HTTP {resp.status}"))
+            return data["prompt_id"], client_id
 
     def _ws_url(self) -> str:
         """WebSocket URL derived from the HTTP base URL."""
@@ -70,23 +72,23 @@ class ComfyUIClient:
             while not seen and not finished:
                 ws = None
                 try:
-                    async with aiohttp.ClientSession() as session:
-                        ws = await session.ws_connect(
-                            self._ws_url() + "/ws?clientId=" + client_id
-                        )
-                        async for msg in ws:
-                            if seen or finished:
-                                break
-                            if msg.type != aiohttp.WSMsgType.TEXT:
-                                continue
-                            try:
-                                data = json.loads(msg.data)
-                            except (TypeError, json.JSONDecodeError):
-                                continue
-                            payload = data.get("data", data)
-                            if payload.get("prompt_id") != prompt_id:
-                                continue
-                            _handle_progress(payload, on_progress)
+                    session = get_session()
+                    ws = await session.ws_connect(
+                        self._ws_url() + "/ws?clientId=" + client_id
+                    )
+                    async for msg in ws:
+                        if seen or finished:
+                            break
+                        if msg.type != aiohttp.WSMsgType.TEXT:
+                            continue
+                        try:
+                            data = json.loads(msg.data)
+                        except (TypeError, json.JSONDecodeError):
+                            continue
+                        payload = data.get("data", data)
+                        if payload.get("prompt_id") != prompt_id:
+                            continue
+                        _handle_progress(payload, on_progress)
                 except asyncio.CancelledError:
                     # Close the socket with a proper WebSocket close frame so
                     # ComfyUI's server sees a clean shutdown instead of a
@@ -132,9 +134,9 @@ class ComfyUIClient:
         async def poll_history() -> list[str]:
             nonlocal seen
             while loop.time() < deadline:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"{self.base_url}/history/{prompt_id}") as resp:
-                        data = await resp.json()
+                session = get_session()
+                async with session.get(f"{self.base_url}/history/{prompt_id}") as resp:
+                    data = await resp.json()
                 entry = data.get(prompt_id)
                 if entry:
                     status = entry.get("status", {})
@@ -185,11 +187,11 @@ class ComfyUIClient:
         now = time.monotonic()
         if not force and self._ckpt_cache is not None and now - self._ckpt_cache_time < self.CHECKPOINT_CACHE_TTL:
             return self._ckpt_cache
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{self.base_url}/models/checkpoints") as resp:
-                if resp.status != 200:
-                    raise ComfyUIError(f"Could not list checkpoints (HTTP {resp.status})")
-                data = await resp.json()
+        session = get_session()
+        async with session.get(f"{self.base_url}/models/checkpoints") as resp:
+            if resp.status != 200:
+                raise ComfyUIError(f"Could not list checkpoints (HTTP {resp.status})")
+            data = await resp.json()
         # ComfyUI's GET /models/{folder} returns a bare JSON array of plain
         # filename strings (e.g. ["SDXL.safetensors", "flux.safetensors"]).
         # Tolerate a dict wrapper and dict items for forward compatibility.
@@ -210,25 +212,25 @@ class ComfyUIClient:
         ComfyUI exposes /free for this. Recent builds accept POST; older
         builds only accept GET, so fall back gracefully.
         """
-        async with aiohttp.ClientSession() as session:
-            try:
-                # ComfyUI's /free endpoint requires JSON body flags:
-                #   unload_models -> unload all loaded models
-                #   free_memory -> reset execution cache + gc
-                # Both default to false, so we must send them explicitly.
-                async with session.post(
-                    f"{self.base_url}/free",
-                    json={"unload_models": True, "free_memory": True},
-                ) as resp:
-                    if resp.status in (404, 405):
-                        # Older ComfyUI: GET only.
-                        async with session.get(f"{self.base_url}/free") as resp2:
-                            if resp2.status >= 400:
-                                raise ComfyUIError(f"Could not free memory (HTTP {resp2.status})")
-                    elif resp.status >= 400:
-                        raise ComfyUIError(f"Could not free memory (HTTP {resp.status})")
-            except aiohttp.ClientError:
-                raise ComfyUIError("Could not free memory (connection error)")
+        session = get_session()
+        try:
+            # ComfyUI's /free endpoint requires JSON body flags:
+            #   unload_models -> unload all loaded models
+            #   free_memory -> reset execution cache + gc
+            # Both default to false, so we must send them explicitly.
+            async with session.post(
+                f"{self.base_url}/free",
+                json={"unload_models": True, "free_memory": True},
+            ) as resp:
+                if resp.status in (404, 405):
+                    # Older ComfyUI: GET only.
+                    async with session.get(f"{self.base_url}/free") as resp2:
+                        if resp2.status >= 400:
+                            raise ComfyUIError(f"Could not free memory (HTTP {resp2.status})")
+                elif resp.status >= 400:
+                    raise ComfyUIError(f"Could not free memory (HTTP {resp.status})")
+        except aiohttp.ClientError:
+            raise ComfyUIError("Could not free memory (connection error)")
         log.info("ComfyUI memory freed")
 
     async def wait_for_output_text(self, prompt_id: str, timeout: float = 300.0, target_node: str | None = None) -> str:
@@ -239,10 +241,10 @@ class ComfyUIClient:
         """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
+        session = get_session()
         while loop.time() < deadline:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.base_url}/history/{prompt_id}") as resp:
-                    data = await resp.json()
+            async with session.get(f"{self.base_url}/history/{prompt_id}") as resp:
+                data = await resp.json()
             entry = data.get(prompt_id)
             if entry:
                 status = entry.get("status", {})
@@ -277,15 +279,15 @@ class ComfyUIClient:
 
     async def fetch_image(self, filename: str) -> bytes:
         """Fetch a saved image. ComfyUI serves output images via the /view endpoint."""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.base_url}/view",
-                params={"filename": filename},
-            ) as resp:
-                if resp.status == 404:
-                    raise ComfyUIError(f"Image not found: {filename}")
-                resp.raise_for_status()
-                return await resp.read()
+        session = get_session()
+        async with session.get(
+            f"{self.base_url}/view",
+            params={"filename": filename},
+        ) as resp:
+            if resp.status == 404:
+                raise ComfyUIError(f"Image not found: {filename}")
+            resp.raise_for_status()
+            return await resp.read()
 
     async def upload_image(self, data: bytes, filename: str) -> str:
         """Upload an image into ComfyUI's user folder; returns the stored name."""
@@ -298,9 +300,9 @@ class ComfyUIClient:
             data,
             headers={"Content-Disposition": f'form-data; name="image"; filename="{filename}"'},
         )
-        async with aiohttp.ClientSession() as session:
-            async with session.post(f"{self.base_url}/upload/image", data=form) as resp:
-                data_json = await resp.json()
-                if "error" in data_json:
-                    raise ComfyUIError(data_json["error"])
-                return data_json.get("name", filename)
+        session = get_session()
+        async with session.post(f"{self.base_url}/upload/image", data=form) as resp:
+            data_json = await resp.json()
+            if "error" in data_json:
+                raise ComfyUIError(data_json["error"])
+            return data_json.get("name", filename)
