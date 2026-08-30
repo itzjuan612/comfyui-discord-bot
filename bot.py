@@ -486,14 +486,37 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
 
     ckpt_name = kwargs.get("ckpt_name")
     if ckpt_name is not None:
-        # Point the checkpoint loader at the requested file. Works with any
-        # checkpoint present in ComfyUI's models/checkpoints folder.
+        # Point the model loader at the requested file. Works with SDXL
+        # checkpoints (models/checkpoints) and with UNet/DiT model files.
+        # Node type -> input key used to name the model file.
+        loader_keys = {
+            "CheckpointLoaderSimple": "ckpt_name",
+            "UNETLoader": "unet_name",
+            "SeedVR2LoadDiTModel": "model",
+            "FlashVSRNode": "model",
+        }
+        # Ideogram has two UNet loaders (conditional + unconditional); the
+        # spec's model_node pins which one a default_model refers to.
+        model_node = spec.get("model_node")
         for nid, node in workflow.items():
-            if node.get("class_type") == "CheckpointLoaderSimple":
-                node["inputs"]["ckpt_name"] = ckpt_name
-                break
+            key = loader_keys.get(node.get("class_type"))
+            if key is None:
+                continue
+            if model_node is not None and str(nid) != str(model_node):
+                continue
+            node["inputs"][key] = ckpt_name
+            break
         else:
-            raise ValueError("Workflow has no CheckpointLoaderSimple node; cannot select a checkpoint.")
+            raise ValueError(f"Workflow has no model-loader node; cannot select model {ckpt_name!r}.")
+
+    # Ideogram's second UNet loader (unconditional branch) can be overridden
+    # independently via the spec's default_model_unconditional / model_node_unconditional.
+    default_model_unconditional = spec.get("default_model_unconditional")
+    model_node_unconditional = spec.get("model_node_unconditional")
+    if default_model_unconditional is not None and model_node_unconditional is not None:
+        node = workflow.get(str(model_node_unconditional))
+        if node is not None and node.get("class_type") == "UNETLoader":
+            node["inputs"]["unet_name"] = default_model_unconditional
 
     prompt = kwargs.get("prompt")
     negative = kwargs.get("negative")
@@ -590,26 +613,38 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
     workflow = load_workflow(spec["file"])
     api_workflow = graph_to_api(workflow) if "nodes" in workflow else workflow
 
-    # Determine the effective checkpoint. If the user didn't choose one, use
-    # the workflow's default. If that default file doesn't exist in ComfyUI's
-    # models/checkpoints folder, fall back to an available checkpoint
-    # (preferring one whose name contains "sdxl").
+    # Determine the effective model file. Priority: explicit request
+    # (ckpt_name) > config default_model > the workflow's own value. The
+    # checkpoints-availability fallback applies only to SDXL, whose files live
+    # in models/checkpoints (UNet/DiT models live in different folders).
     effective_ckpt = kwargs.get("ckpt_name")
     if effective_ckpt is None:
-        default_ckpt = None
-        for node in api_workflow.values():
-            if node.get("class_type") == "CheckpointLoaderSimple":
-                default_ckpt = node["inputs"].get("ckpt_name")
-                break
+        default_ckpt = spec.get("default_model")
+        if default_ckpt is None:
+            for node in api_workflow.values():
+                if node.get("class_type") in ("CheckpointLoaderSimple", "UNETLoader", "SeedVR2LoadDiTModel", "FlashVSRNode"):
+                    key = {"CheckpointLoaderSimple": "ckpt_name", "UNETLoader": "unet_name",
+                           "SeedVR2LoadDiTModel": "model", "FlashVSRNode": "model"}.get(node["class_type"])
+                    if key and node["inputs"].get(key):
+                        default_ckpt = node["inputs"][key]
+                        break
         if default_ckpt is not None:
-            try:
-                available = await comfy.fetch_checkpoints()
-            except Exception as exc:
-                log.warning("Could not list checkpoints for fallback: %s", exc)
-                available = []
-            if available and default_ckpt not in available:
-                effective_ckpt = next((c for c in available if "sdxl" in c.lower()), available[0])
-                log.info("Default checkpoint %r not available; falling back to %r", default_ckpt, effective_ckpt)
+            if model_key == "sdxl":
+                try:
+                    available = await comfy.fetch_checkpoints()
+                except Exception as exc:
+                    log.warning("Could not list checkpoints for fallback: %s", exc)
+                    available = []
+                if available and default_ckpt not in available:
+                    effective_ckpt = next((c for c in available if "sdxl" in c.lower()), available[0])
+                    log.info("Default checkpoint %r not available; falling back to %r", default_ckpt, effective_ckpt)
+                else:
+                    effective_ckpt = default_ckpt
+                kwargs["ckpt_name"] = effective_ckpt
+            else:
+                # UNet/DiT models live in different folders, so no availability
+                # check — trust the config value (falling back to the workflow).
+                effective_ckpt = default_ckpt
                 kwargs["ckpt_name"] = effective_ckpt
     last_ckpt = last_ckpt_by_model.get(model_key)
     if not workflow_changed and last_ckpt is not None and last_ckpt != effective_ckpt:
@@ -859,90 +894,14 @@ class UpscaleModelView(View):
         log.warning("UpscaleModelView error: %s", error)
 
 
-class CheckpointButton(Button):
-    """One checkpoint option in the /upscale sdxl picker.
-
-    ``checkpoint`` is ``None`` for the "Default" option (the workflow's own
-    checkpoint, with automatic fallback to an available SDXL checkpoint).
-    """
-
-    def __init__(self, checkpoint: str | None, label: str, index: int):
-        # custom_id must be letters/digits/underscore/hyphen; use an index so it
-        # stays valid regardless of the checkpoint filename's characters.
-        custom_id = "ckpt_default" if checkpoint is None else f"ckpt{index}"
-        super().__init__(label=label, emoji="\U0001f505", custom_id=custom_id)
-        self.checkpoint = checkpoint
-
-    async def callback(self, interaction: discord.Interaction):
-        if await ban_guard(interaction):
-            return
-        view: CheckpointPickerView = self.view
-        stealth = view.stealth
-        log.info("Upscale checkpoint %s selected", self.checkpoint or "default")
-        # The /upscale command already consumed the cooldown when invoked;
-        # the checkpoint click is the continuation of that same request, so we
-        # do not re-check (re-checking would always fail and block the run).
-        await interaction.response.defer(ephemeral=stealth)
-        progress_msg = await interaction.followup.send(
-            content="\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
-            ephemeral=stealth,
-        )
-        progress = ProgressUpdater(progress_msg)
-        try:
-            images, meta = await run_image(
-                view.spec, on_progress=progress.update, model_key=view.model_key,
-                prompt=view.prompt, negative=view.negative, strength=view.strength,
-                image_filename=view.uploaded_name, scale=view.scale,
-                input_longest_side=view.input_longest_side,
-                ckpt_name=self.checkpoint,
-            )
-            progress.done = True
-            for img in images:
-                if await nsfw_guard.check_image_nsfw(img, interaction):
-                    msg = await progress_msg.edit(
-                        content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
-                    )
-                    schedule_message_deletion(msg)
-                    return
-            files = []
-            for i, img in enumerate(images):
-                img_bytes, ext = compress_image(img)
-                files.append(discord.File(io.BytesIO(img_bytes), filename=f"{view.model_key}_upscale_{i}{ext}"))
-            display_ckpt = meta.get("ckpt_name") or self.checkpoint
-            base_desc = (
-                f"**Model:** {view.model_key}"
-                + (f"\n**Checkpoint:** {display_ckpt}" if display_ckpt else "")
-                + (f"\n**Scale:** {view.scale:g}x" if view.scale is not None else "")
-                + f"\n**Resolution:** {image_resolution(images[0])}"
-            )
-            embed = discord.Embed(
-                description=base_desc + "\n" + "\n".join(meta_lines(meta)),
-                color=discord.Color.green(),
-            )
-            response_msg = await progress_msg.edit(
-                content="", embed=embed, attachments=files, view=GenerationView(stealth=stealth)
-            )
-            generation_store.save(response_msg.id, {
-                "spec": view.spec, "model": view.model_key, "suffix": "upscale", "stealth": stealth,
-                "embed_desc": base_desc, "embed_color": int(embed.color),
-                "user_id": interaction.user.id,
-                "kwargs": {"prompt": view.prompt, "negative": view.negative, "strength": view.strength,
-                            "image_filename": view.uploaded_name, "scale": view.scale,
-                            "input_longest_side": view.input_longest_side, "ckpt_name": self.checkpoint},
-            })
-        except Exception as exc:
-            progress.done = True
-            logging.getLogger("bot").exception("checkpoint upscale failed")
-            await reply_error(interaction, f"\u274c Upscaling failed: {exc}", target=progress_msg)
-
-
 class CheckpointPickerView(View):
-    """Ephemeral picker shown when /upscale uses the sdxl workflow.
+    """Ephemeral select-menu picker shown when /upscale uses the sdxl workflow.
 
-    Lets the user pick any checkpoint in models/checkpoints to upscale with.
-    Carries the uploaded input image name, resolution, and generation params
-    so the chosen checkpoint button can run the upscale without re-downloading
-    the image.
+    Modeled on ``ThinkingView``: a single ``Select`` listing every checkpoint
+    in models/checkpoints (plus "Default", which uses the workflow's own
+    checkpoint with automatic fallback). Carries the uploaded input image name,
+    resolution, and generation params so the selected option can run the
+    upscale without re-downloading the image.
     """
 
     def __init__(self, spec: dict, model_key: str, uploaded_name: str,
@@ -960,14 +919,99 @@ class CheckpointPickerView(View):
         self.negative = negative
         self.strength = strength
         self.scale = scale
-        # Default first (workflow's own checkpoint + automatic fallback).
-        self.add_item(CheckpointButton(None, "Default (workflow checkpoint)", 0))
-        # Discord allows at most 25 buttons per view.
-        for i, ckpt in enumerate(checkpoints[:25], start=1):
-            self.add_item(CheckpointButton(ckpt, ckpt, i))
+        # "default" maps to the workflow's own checkpoint (with automatic
+        # fallback to an available SDXL checkpoint in run_image).
+        options = [discord.SelectOption(label="Default (workflow checkpoint)", value="default")]
+        options += [discord.SelectOption(label=c, value=c) for c in checkpoints[:100]]
+        self.add_item(CheckpointSelect(
+            placeholder="Select a checkpoint",
+            options=options,
+            min_values=1, max_values=1,
+            custom_id="upscale_checkpoint",
+        ))
+
+    async def handle_select(self, interaction: discord.Interaction, value: str):
+        if await ban_guard(interaction):
+            return
+        self.stop()
+        ckpt_name = None if value == "default" else value
+        log.info("Upscale checkpoint %s selected", ckpt_name or "default")
+        # The /upscale command already consumed the cooldown when invoked;
+        # the select click is the continuation of that same request, so we do
+        # not re-check (re-checking would always fail and block the run).
+        await interaction.response.defer(ephemeral=self.stealth)
+        progress_msg = await interaction.followup.send(
+            content="\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            ephemeral=self.stealth,
+        )
+        progress = ProgressUpdater(progress_msg)
+        try:
+            images, meta = await run_image(
+                self.spec, on_progress=progress.update, model_key=self.model_key,
+                prompt=self.prompt, negative=self.negative, strength=self.strength,
+                image_filename=self.uploaded_name, scale=self.scale,
+                input_longest_side=self.input_longest_side,
+                ckpt_name=ckpt_name,
+            )
+            progress.done = True
+            for img in images:
+                if await nsfw_guard.check_image_nsfw(img, interaction):
+                    msg = await progress_msg.edit(
+                        content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
+                    )
+                    schedule_message_deletion(msg)
+                    return
+            files = []
+            for i, img in enumerate(images):
+                img_bytes, ext = compress_image(img)
+                files.append(discord.File(io.BytesIO(img_bytes), filename=f"{self.model_key}_upscale_{i}{ext}"))
+            display_ckpt = meta.get("ckpt_name") or ckpt_name
+            base_desc = (
+                f"**Model:** {self.model_key}"
+                + (f"\n**Checkpoint:** {display_ckpt}" if display_ckpt else "")
+                + (f"\n**Scale:** {self.scale:g}x" if self.scale is not None else "")
+                + f"\n**Resolution:** {image_resolution(images[0])}"
+            )
+            embed = discord.Embed(
+                description=base_desc + "\n" + "\n".join(meta_lines(meta)),
+                color=discord.Color.green(),
+            )
+            response_msg = await progress_msg.edit(
+                content="", embed=embed, attachments=files, view=GenerationView(stealth=self.stealth)
+            )
+            generation_store.save(response_msg.id, {
+                "spec": self.spec, "model": self.model_key, "suffix": "upscale", "stealth": self.stealth,
+                "embed_desc": base_desc, "embed_color": int(embed.color),
+                "user_id": interaction.user.id,
+                "kwargs": {"prompt": self.prompt, "negative": self.negative, "strength": self.strength,
+                            "image_filename": self.uploaded_name, "scale": self.scale,
+                            "input_longest_side": self.input_longest_side, "ckpt_name": ckpt_name},
+            })
+        except Exception as exc:
+            progress.done = True
+            logging.getLogger("bot").exception("checkpoint upscale failed")
+            await reply_error(interaction, f"\u274c Upscaling failed: {exc}", target=progress_msg)
+
+    async def on_timeout(self):
+        try:
+            await self.message.edit(content="\u23f3 Checkpoint selection expired; upscale cancelled.")
+        except Exception:
+            pass
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item):
         log.warning("CheckpointPickerView error: %s", error)
+
+
+class CheckpointSelect(Select):
+    """The checkpoint select item shown by the /upscale sdxl picker.
+
+    discord.py dispatches select-menu interactions to the component's own
+    ``callback`` method, NOT to a View-level handler — so the handler lives
+    on the select itself (same pattern as ``ThinkingSelect``).
+    """
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.view.handle_select(interaction, self.values[0])
 
 
 class UpscaleButton(Button):
@@ -1547,6 +1591,22 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
     if cfg is None:
         cfg = settings["cfg"]
 
+    # Per-user default SDXL checkpoint (set via /settings). Used only by
+    # /sdxl when no explicit model is passed; silently ignored if unavailable.
+    if model is None:
+        saved = settings.get("sdxl_checkpoint")
+        if saved:
+            try:
+                available = await comfy.fetch_checkpoints()
+            except Exception as exc:
+                log.warning("Could not list checkpoints: %s", exc)
+                available = None
+            if available is not None:
+                if saved in available:
+                    model = saved
+                else:
+                    log.info("Saved SDXL checkpoint %r not available; using workflow default.", saved)
+
     # Optional checkpoint selection: any file in ComfyUI's models/checkpoints
     # folder can be used instead of the workflow's default checkpoint.
     if model is not None:
@@ -1801,14 +1861,17 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
         # SDXL upscale: let the user pick any checkpoint from models/checkpoints.
         # Show an ephemeral picker; the selected button runs the upscale.
         if model == "sdxl":
+            # Defer first (within Discord's 3-second window) so the interaction
+            # token doesn't expire while fetch_checkpoints() queries ComfyUI.
+            await interaction.response.defer(ephemeral=True)
+            msg = await interaction.original_response()
             try:
                 checkpoints = await comfy.fetch_checkpoints()
             except Exception as exc:
                 log.warning("Could not fetch checkpoints for sdxl upscale: %s", exc)
                 checkpoints = []
-            await interaction.response.send_message(
+            await msg.edit(
                 content="\u2705 Image uploaded. Pick a checkpoint to upscale with:",
-                ephemeral=True,
                 view=CheckpointPickerView(
                     spec, model, uploaded_name, input_longest_side, stealth,
                     prompt, negative, strength, scale, checkpoints,
@@ -1859,7 +1922,12 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
                        "input_longest_side": input_longest_side},
         })
     except (ComfyUIError, Exception) as exc:
-        progress.done = True
+        # progress is only bound on the non-sdxl path; guard so an error in the
+        # sdxl branch (which returns early) doesn't raise UnboundLocalError.
+        try:
+            progress.done = True
+        except UnboundLocalError:
+            pass
         logging.getLogger("bot").exception("upscale failed")
         await reply_error(interaction, f"\u274c Upscaling failed: {exc}")
 
@@ -2086,6 +2154,7 @@ def meta_lines(meta: dict) -> list[str]:
 @app_commands.describe(img2img_sampler="Default img2img sampler")
 @app_commands.describe(img2img_megapixels="Default img2img resolution in megapixels")
 @app_commands.describe(stealth="Default privacy (ephemeral) for all your generations")
+@app_commands.describe(sdxl_checkpoint="Default SDXL checkpoint (models/checkpoints), used only by /sdxl")
 @app_commands.describe(view="Set to true to only view your current settings")
 async def settings(interaction: discord.Interaction,
                     positive_prompt: str | None = None,
@@ -2100,6 +2169,7 @@ async def settings(interaction: discord.Interaction,
                     img2img_sampler: str | None = None,
                     img2img_megapixels: int | None = None,
                     stealth: bool | None = None,
+                    sdxl_checkpoint: str | None = None,
                     view: bool = False):
     user_id = interaction.user.id
     await interaction.response.defer(ephemeral=True)
@@ -2111,6 +2181,7 @@ async def settings(interaction: discord.Interaction,
         or img2img_cfg is not None or img2img_steps is not None
         or img2img_sampler is not None or img2img_megapixels is not None
         or stealth is not None
+        or sdxl_checkpoint is not None
     ):
         s = user_settings.get_settings(user_id)
         await interaction.edit_original_response(
@@ -2133,6 +2204,7 @@ async def settings(interaction: discord.Interaction,
             "img2img_sampler": img2img_sampler,
             "img2img_megapixels": img2img_megapixels,
             "stealth": stealth,
+            "sdxl_checkpoint": sdxl_checkpoint,
         }.items() if v is not None
     }
     s = user_settings.set_settings(user_id, **updates)
