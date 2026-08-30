@@ -4,26 +4,46 @@
 comfyui:
   base_url: "http://localhost:8188"
 
+# NSFW guardrail: refuse NSFW prompts unless run in a Discord-marked NSFW channel.
 nsfw:
+  # Optional extra keywords beyond the built-in list.
   extra_terms: []
+  # Image-level NSFW check (lightweight CPU ONNX classifier).
+  # Runs on every generated image; NSFW output is allowed only in
+  # Discord-marked NSFW channels.
   image_check: true
   image_threshold: 0.5
 
 discord:
   token: "PASTE_YOUR_DISCORD_TOKEN_HERE"
 
+# Predefined bot owner. The owner can delete any
+# generation, restart the bot, and manage admins/bans via /admin.
+# Set owner.id to your own Discord user ID (enable Developer Mode to see it).
 owner:
   id: 0   # your Discord user ID (enable Developer Mode to see it)
 
+# LLM (OpenAI-compatible) endpoint used by /gen_prompt.
+# The bot sends <base URL>/v1/chat/completions to the workflow.
+#
+# Option A (local server): provide address + port (port optional, defaults
+#   to the standard port). Example:
+#   address: "192.168.100.239"
+#   port: 8000
+# Option B (cloud API like OpenAI): provide the full base URL in `url`
+#   and your api_token. Example:
+#   url: "https://api.openai.com"
+#   api_token: "sk-..."
+# You may also use `scheme: "https"` together with address/port instead of url.
 llm:
-  address: "127.0.0.1"
-  port: 1234
-  # url: "https://api.openai.com"
-  # scheme: "https"
-  api_token: ""
-  default_model: ""
-  timeout: 300
-  thinking_default: "medium"
+  address: "127.0.0.1"   # your LLM server IP or hostname
+  port: 1234                  # your LLM server port (optional for HTTPS endpoints)
+  # url: "https://api.openai.com"   # alternative: full base URL
+  # scheme: "https"                 # if using address/port with an HTTPS endpoint
+  api_token: ""               # optional; leave empty if the API needs no auth
+  default_model: ""             # optional default model if the user doesn't choose one
+  timeout: 300                  # seconds to wait for the LLM to respond (default 300)
+  thinking_default: "medium"    # default reasoning effort used when /gen_prompt omits thinking
 
 models:
   # default_model: the file the workflow loads by default (override to swap models).
@@ -57,6 +77,7 @@ models:
       seed_node: 12
       seed_key: seed
       image_node: 13
+      # SeedVR2 uses absolute pixel targets: value = longest side * scale.
       scale_node: 12
       scale_keys: [resolution, max_resolution]
       scale_mode: resolution
@@ -71,6 +92,8 @@ models:
       scale_key: scale
   ideogram:
     t2i:
+      # Node IDs in this workflow are prefixed "98:" (from ComfyUI's
+      # graph export), so they must be quoted as strings in YAML.
       file: workflows/t2i/Ideogram_4_generator.json
       default_model: "ideogram4_fp8_scaled.safetensors"
       model_node: "98:23"
@@ -79,11 +102,14 @@ models:
       model_node_unconditional: "98:154"
       prompt_node: "98:24"
       prompt_key: text
+      # Seed flows through the Random Number node (its "seed" input seeds the RNG).
       seed_node: "190"
       seed_key: seed
+      # ResolutionSelector node: megapixels + aspect ratio (replaces width/height).
       resolution_node: "37"
       megapixels_key: megapixels
       aspect_ratio_key: aspect_ratio
+      # Quality preset (Turbo/Default/Quality) via the CustomCombo node.
       quality_node: "98:156"
       quality_key: choice
   flux2_klein:
