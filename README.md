@@ -214,7 +214,7 @@ Clone these repositories into ComfyUI's `custom_nodes/` folder:
 | `ComfyUI-SeedVR2_VideoUpscaler` | https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler | SeedVR2 upscale workflow |
 | `ComfyUI-FlashVSR_Ultra_Fast` | https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast/ | FlashVSR upscale workflow |
 | `KJNodes for ComfyUI` | https://github.com/kijai/ComfyUI-KJNodes | Ideogram 4 generator & prompt-gen workflow (provides `ResolutionSelector`, `CustomCombo`, `Ideogram4Scheduler`, `DualModelGuider`, `CFGOverride`, `ReferenceLatent`, `EmptyFlux2LatentImage`, `Flux2Scheduler`, `ImageScaleToTotalPixels`, `GetImageSize`, `Random Number`) |
-| `was-node-suite-comfyui` | https://github.com/was/ComfyUI-was-node-suite | SDXL text-to-image workflow (provides `CLIP Input Switch` and `VAE Input Switch` used to route bundled vs. separate CLIP/VAE) |
+| `was-node-suite-comfyui` | https://github.com/ltdrdata/was-node-suite-comfyui | SDXL text-to-image workflow (provides `CLIP Input Switch` and `VAE Input Switch` used to route bundled vs. separate CLIP/VAE) |
 
 ```bash
 cd ComfyUI/custom_nodes
@@ -231,15 +231,15 @@ Place these in ComfyUI's `models/` directories:
 | Model File | Location | Used By |
 | --- | --- | --- |
 | `SDXL.safetensors` | models/checkpoints/ | SDXL text-to-image & SDXL upscale (any SDXL checkpoint works) |
-| `qwen_3_06b_base.safetensors` | models/clip/ | SDXL split-checkpoint text encoder (used when the checkpoint lacks a bundled CLIP) |
-| `qwen_image_vae.safetensors` | models/vae/ | SDXL split-checkpoint VAE (used when the checkpoint lacks a bundled VAE) |
-| `ideogram4_fp8_scaled.safetensors` | models/unet/ (or models/diffusion_models/) | Ideogram 4 text-to-image |
-| `ideogram4_unconditional_fp8_scaled.safetensors` | models/unet/ | Ideogram 4 (unconditional branch) |
-| `flux2-vae.safetensors` | models/vae/ | Ideogram 4 VAE |
-| `qwen3vl_8b_fp8_scaled.safetensors` | models/clip/ | Ideogram 4 CLIP |
-| `flux-2-klein-base-4b-fp8.safetensors` | models/unet/ | Flux 2 Klein 4B img2img |
-| `full_encoder_small_decoder.safetensors` | models/vae/ | Flux 2 Klein VAE |
-| `qwen_3_4b.safetensors` | models/clip/ | Flux 2 Klein CLIP |
+| `[qwen_3_06b_base.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/main/split_files/text_encoders/qwen_3_06b_base.safetensors)` | models/clip/ | SDXL split-checkpoint text encoder (used when the checkpoint lacks a bundled CLIP) |
+| `[qwen_image_vae.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/blob/main/split_files/vae/qwen_image_vae.safetensors)` | models/vae/ | SDXL split-checkpoint VAE (used when the checkpoint lacks a bundled VAE) |
+| `[ideogram4_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Ideogram-4/blob/main/diffusion_models/ideogram4_fp8_scaled.safetensors)` | models/unet/ (or models/diffusion_models/) | Ideogram 4 text-to-image |
+| `[ideogram4_unconditional_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Ideogram-4/blob/main/diffusion_models/ideogram4_unconditional_fp8_scaled.safetensors)` | models/unet/ | Ideogram 4 (unconditional branch) |
+| `[flux2-vae.safetensors](https://huggingface.co/Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors)` | models/vae/ | Ideogram 4 VAE |
+| `[qwen3vl_8b_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Ideogram-4/blob/main/text_encoders/qwen3vl_8b_fp8_scaled.safetensors)` | models/clip/ | Ideogram 4 CLIP |
+| `[flux-2-klein-base-4b-fp8.safetensors](https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/blob/main/flux-2-klein-base-4b-fp8.safetensors)` | models/unet/ | Flux 2 Klein 4B img2img |
+| `[full_encoder_small_decoder.safetensors](https://huggingface.co/black-forest-labs/FLUX.2-small-decoder/blob/main/full_encoder_small_decoder.safetensors)` | models/vae/ | Flux 2 Klein VAE |
+| `[qwen_3_4b.safetensors](https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/text_encoders/qwen_3_4b.safetensors)` | models/clip/ | Flux 2 Klein CLIP |
 | `seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors` | models/ (auto-downloaded by node) | SeedVR2 upscale |
 | `ema_vae_fp16.safetensors` | models/ (auto-downloaded by node) | SeedVR2 VAE |
 | `FlashVSR-v1.1` | auto-downloaded by the FlashVSR node | FlashVSR upscale |
