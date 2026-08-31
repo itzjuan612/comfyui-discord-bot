@@ -2,6 +2,7 @@ import io
 import os
 import subprocess
 import sys
+import logging
 
 from http_session import get_session
 from PIL import Image
