@@ -32,8 +32,33 @@ async def on_close():
     await close_session()
 
 
+def _loop_exception_handler(loop, context):
+    """Swallow harmless connection-reset noise from the Windows Proactor loop.
+
+    On Windows, asyncio's Proactor transport calls ``socket.shutdown()`` in its
+    ``call_connection_lost`` callback after the remote host has already reset
+    the connection (WinError 10054). This happens when the ComfyUI progress
+    WebSocket is torn down at the end of a generation. The error is harmless
+    (the generation already completed), so we log it at debug level instead of
+    letting asyncio print a scary traceback.
+    """
+    exc = context.get("exception")
+    message = context.get("message", "")
+    # The default handler's message is e.g.
+    # "exception in callback ProactorBasePipeTransport.call_connection_lost(None)".
+    if isinstance(exc, ConnectionResetError) and "call_connection_lost" in message:
+        log.debug("Ignoring harmless Proactor connection-lost reset: %s", exc)
+        return
+    # Fall through for anything else.
+    log.error(
+        "Unhandled asyncio exception: %s", exc,
+        exc_info=exc if exc is not None else None,
+    )
+
+
 @bot.event
 async def on_ready():
+    asyncio.get_running_loop().set_exception_handler(_loop_exception_handler)
     await bot.tree.sync()
     # Register the persistent GenerationView inside the running event loop.
     # (Calling bot.add_view() before bot.run() creates the view outside the
