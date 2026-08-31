@@ -4,6 +4,8 @@ config.yaml
 # Runtime data
 *.db
 *.log
+*.db-shm
+*.db-wal
 
 # Python
 __pycache__/

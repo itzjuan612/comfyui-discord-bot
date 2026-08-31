@@ -2,6 +2,7 @@ import io
 
 from PIL import Image
 import discord
+import logging
 from discord import app_commands
 
 from bot import bot
