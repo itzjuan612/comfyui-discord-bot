@@ -99,6 +99,8 @@ nsfw_guard.configure_image_check(
 # Per-user cooldown to prevent abuse of the GPU.
 cooldowns: dict[str, float] = {}
 MIN_INTERVAL_SECONDS = 20
+# Entries older than this are pruned so the dict doesn't grow unboundedly.
+COOLDOWN_TTL_SECONDS = MIN_INTERVAL_SECONDS * 2
 
 # Track the last workflow file used per model so we can free memory
 # when switching between workflows.
@@ -287,6 +289,12 @@ async def check_cooldown(interaction) -> bool:
 
     uid = str(interaction.user.id)
     now = asyncio.get_running_loop().time()
+    # Prune stale entries so the cooldown dict does not grow unboundedly.
+    cutoff = now - COOLDOWN_TTL_SECONDS
+    if len(cooldowns) > 100:
+        stale = [u for u, t in cooldowns.items() if t < cutoff]
+        for u in stale:
+            cooldowns.pop(u, None)
     last = cooldowns.get(uid, 0)
     if now - last < MIN_INTERVAL_SECONDS:
         return False
