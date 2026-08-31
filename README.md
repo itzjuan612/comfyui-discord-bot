@@ -136,15 +136,21 @@ Key modules:
 
 | File | Role |
 | --- | --- |
-| `main.py` | Entry point: inits the SQLite DBs, seeds the owner, and runs the bot (`python main.py`) |
-| `bot.py` | Shared bot instance: creates the Bot, imports the cogs (slash commands), defines `on_ready`, and closes the shared HTTP session on shutdown (`on_close`) |
+| `main.py` | Entry point: inits the SQLite DBs, seeds the owner, and runs the bot (`python main.py`). Accepts `DISCORD_TOKEN` env var as an alternative to the `config.yaml` token. |
+| `bot.py` | Shared bot instance: creates the Bot, imports the cogs (slash commands), defines `on_ready` (registers the persistent `GenerationView`, syncs slash commands, starts the LLM model refresh loop), and closes the shared HTTP session on shutdown (`on_close`) |
+| `core.py` | Shared runtime: config, owner ID, model/upscale/i2i model lists, sampler & aspect-ratio choices, NSFW guard config, cooldown tracking, memory-freeing state, progress bar, image compression, and error replies |
 | `http_session.py` | Single shared `aiohttp.ClientSession` reused by all HTTP/WebSocket calls (ComfyUI, LLM, Discord image downloads); created lazily and closed on bot shutdown |
-| `comfyui_client.py` | Async HTTP/WS client for ComfyUI (`/prompt`, `/history`, `/view`, `/upload/image`, `/free`) |
-| `config_loader.py` | Loads `config.yaml` (auto-generates it with defaults if missing) |
+| `comfyui_client.py` | Async HTTP/WS client for ComfyUI (`/prompt`, `/history`, `/view`, `/upload/image`, `/free`); caches the checkpoint list (60s TTL) |
+| `workflow.py` | Loads workflow JSON, converts graph format to API format, patches node inputs from config specs, and runs image/text workflows |
+| `llm_client.py` | OpenAI-compatible LLM client: model listing, load/unload, reasoning-effort probing, cached model list, and autocomplete |
+| `config_loader.py` | Loads `config.yaml` (auto-generates it with defaults if missing) and backfills workflow model defaults |
 | `user_settings.py` | Per-user defaults (SQLite) |
 | `generation_store.py` | Persisted generation params per message (SQLite) |
 | `moderation.py` | Admin/ban lists (SQLite) |
 | `nsfw_guard.py` | Keyword + ONNX image NSFW classifier |
+| `diag.py` | Standalone diagnostic: prints local vs. server-side slash commands for debugging sync issues |
+| `cogs/` | Slash commands: `generation.py` (/ideogram, /sdxl, /upscale, /img2img, /flush), `llm.py` (/gen_prompt, /llm_models), `settings.py` (/settings, /reset_settings), `admin.py` (/admin) |
+| `ui/views.py` | All interactive UI: generation buttons (Retry/Delete/Upscale/Edit), checkpoint picker, reasoning-effort picker, and admin panel views |
 
 ## Setup
 
@@ -173,7 +179,7 @@ The bot auto-generates `config.yaml` on first run with sensible defaults (and yo
 comfyui:
   base_url: "http://<your-comfyui-ip>:8188"
 discord:
-  token: "<your-discord-bot-token>"
+  token: "<your-discord-bot-token>"   # or set DISCORD_TOKEN env var instead
 owner:
   id: <your-discord-user-id>
 llm:
@@ -185,9 +191,11 @@ llm:
   # api_token: "sk-..."
   default_model: "<default-llm-model>"
   timeout: 300
+  thinking_default: "medium"         # default reasoning effort for /gen_prompt
 nsfw:
   image_check: true
   image_threshold: 0.5
+  extra_terms: []                    # optional: extra NSFW keywords beyond the built-in list
 ```
 
 ### 4. Install ComfyUI Custom Nodes
@@ -279,17 +287,36 @@ Three SQLite databases are created automatically in the project folder:
 comfyuidiscord/
 |-- main.py                 # Entry point (launches the bot)
 |-- bot.py                  # Shared bot instance + cogs (slash commands)
+|-- core.py                 # Shared runtime: config, choices, cooldowns, progress bar
 |-- http_session.py         # Shared aiohttp session (connection reuse)
 |-- comfyui_client.py       # ComfyUI HTTP/WS client
+|-- workflow.py             # Workflow loading, graph->API conversion, spec patching
+|-- llm_client.py           # LLM client: models, load/unload, reasoning-effort probing
 |-- config.yaml             # Configuration (auto-generated if missing)
 |-- config.example.yaml     # Configuration template
-|-- config_loader.py        # YAML loader
+|-- config_loader.py        # YAML loader + model-default backfill
 |-- generation_store.py     # Generation params (SQLite)
 |-- moderation.py           # Admin/ban (SQLite)
 |-- nsfw_guard.py           # NSFW text + image guard
 |-- user_settings.py        # Per-user settings (SQLite)
+|-- generations.db          # Generation params database (SQLite, auto-created)
+|-- moderation.db           # Admin/ban database (SQLite, auto-created)
+|-- user_settings.db        # Per-user settings database (SQLite, auto-created)
+|-- diag.py                 # Slash-command sync diagnostic
 |-- requirements.txt
 |-- start.bat
+|-- LICENSE.txt
+|-- banner.png
+|-- .gitignore
+|-- cogs/
+|   |-- __init__.py         # Package marker
+|   |-- generation.py       # /ideogram, /sdxl, /upscale, /img2img, /flush
+|   |-- llm.py              # /gen_prompt, /llm_models
+|   |-- settings.py         # /settings, /reset_settings
+|   `-- admin.py            # /admin
+|-- ui/
+|   |-- __init__.py         # Package marker
+|   `-- views.py            # All interactive UI (buttons, pickers, modals, admin panel)
 `-- workflows/
     |-- t2i/
     |   |-- sdxl_t2i.json
@@ -313,3 +340,14 @@ comfyuidiscord/
 - The NSFW image check uses a lightweight CPU-only ONNX classifier (open_nsfw ResNet-50) to avoid VRAM contention with ComfyUI.
 - Persistent buttons (Retry, Delete, Upscale, Edit) survive bot restarts via a globally registered Discord View.
 - All HTTP and WebSocket traffic (ComfyUI API, LLM endpoint, Discord image downloads) goes through a single shared `aiohttp.ClientSession` (`http_session.py`) instead of creating a new session per request. This enables TCP Keep-Alive connection reuse, avoids repeated handshakes, and prevents file-descriptor exhaustion during concurrent generations. The session is created lazily (and recreated if the event loop changes) and closed once when the bot shuts down.
+- **LLM model caching:** The LLM model list is cached and refreshed every 300 seconds by a background loop. A failed refresh keeps the previous cache so slash-command autocomplete never breaks.
+- **Reasoning-effort probing:** Before showing the `/gen_prompt` reasoning-effort picker, the bot probes the endpoint with minimal 1-token requests to discover which effort values (`low`, `medium`, `high`, `xhigh`, `on`, `off`) it accepts. Only accepted values appear as options, plus "API default" (sends no effort tag). Results are cached per model.
+- **LLM load/unload:** `/gen_prompt` loads the chosen model before composing the prompt and unloads it after completion or timeout (via LM Studio's `/api/v1/models/load` / `/api/v1/models/unload`). On non-LM-Studio servers these calls are silently skipped.
+- **Restart:** The `/admin` "Restart Bot" button spawns a fresh process with the same command-line arguments and exits immediately.
+- **`/settings` view mode:** Passing `view=true` (or no parameters) displays your saved defaults without changing them.
+- **Transient error auto-deletion:** Error messages (NSFW blocks, cooldowns, generation failures) are deleted automatically after 5 seconds to keep the channel clean.
+- **`diag.py`:** Standalone diagnostic that prints local vs. server-side slash commands for debugging command sync issues.
+- **Output embed:** Each generation embed lists the seed, steps, CFG, sampler, and the checkpoint actually used, so you can see exactly what ran.
+- **Random seeds:** When `seed` is omitted, the bot picks a random seed in the range 0 to 2^32-1; the Retry button re-rolls a fresh seed for a new image.
+- **Aspect-ratio short forms:** Aspect ratio inputs accept short forms like `16:9`, which are auto-normalized to the exact ResolutionSelector label (e.g. `16:9 (Widescreen)`).
+- **NSFW negative prompts:** The NSFW keyword filter ignores negative prompts, so a negative prompt containing "nsfw" (meaning "exclude nsfw") is not blocked.
