@@ -58,13 +58,17 @@ models:
     t2i:
       file: workflows/t2i/sdxl_t2i.json
       default_model: "SDXL.safetensors"
-      prompt_node: 3
-      negative_node: 4
-      seed_node: 5
+      prompt_node: 6
+      negative_node: 7
+      seed_node: 114
       seed_key: noise_seed
-      steps_node: 5
-      latent_node: 2
-      cfg_node: 5
+      steps_node: 114
+      latent_node: 5
+      cfg_node: 114
+      sampler_node: 114
+      switch_node: 107
+      lora1_node: 108
+      lora2_node: 109
     upscale:
       file: workflows/upscale/sdxl_upscale.json
       default_model: "SDXL.safetensors"

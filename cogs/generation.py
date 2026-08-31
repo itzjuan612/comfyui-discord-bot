@@ -17,7 +17,7 @@ from core import (
     SAMPLER_CHOICES, I2I_WORKFLOW_CHOICES,
     ComfyUIError,
 )
-from llm_client import _sdxl_model_autocomplete
+from llm_client import _sdxl_model_autocomplete, _sdxl_lora_autocomplete
 from workflow import run_image
 from ui.views import GenerationView, CheckpointPickerView
 
@@ -157,7 +157,12 @@ async def ideogram(interaction: discord.Interaction, prompt: str,
 @app_commands.describe(width="Width in pixels, multiple of 64")
 @app_commands.describe(height="Height in pixels, multiple of 64")
 @app_commands.describe(cfg="CFG guidance scale")
+@app_commands.describe(lora1="First LoRA (optional)")
+@app_commands.describe(lora2="Second LoRA (optional)")
+@app_commands.describe(lora_strength="LoRA strength (optional, default 1.0)")
 @app_commands.describe(stealth="Ephemeral output, visible only to you")
+@app_commands.autocomplete(lora1=_sdxl_lora_autocomplete)
+@app_commands.autocomplete(lora2=_sdxl_lora_autocomplete)
 async def sdxl(interaction: discord.Interaction, prompt: str,
                 model: str | None = None,
                 negative: str | None = None,
@@ -166,6 +171,9 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
                 width: int | None = None,
                 height: int | None = None,
                 cfg: float | None = None,
+                lora1: str | None = None,
+                lora2: str | None = None,
+                lora_strength: float | None = None,
                 stealth: bool | None = None):
     if stealth is None:
         stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
@@ -240,6 +248,9 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
         "height": height,
         "cfg": cfg,
         "ckpt_name": model,
+        "lora1": lora1,
+        "lora2": lora2,
+        "lora_strength": lora_strength,
     }
     await run_t2i_generation(interaction, "sdxl", prompt, stealth, gen_kwargs)
 @bot.tree.command(name="upscale", description="Upscale an image from your gallery")

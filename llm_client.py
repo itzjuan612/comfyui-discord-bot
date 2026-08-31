@@ -314,6 +314,25 @@ async def llm_model_autocomplete(interaction: discord.Interaction, current_input
     return [app_commands.Choice(name=m, value=m) for m in matches[:25]]
 
 
+async def _sdxl_lora_autocomplete(interaction: discord.Interaction, current_input: str):
+    """Dynamic autocomplete for /sdxl's ``lora1``/``lora2`` parameters.
+
+    Suggests LoRA files from ComfyUI's models/loras folder, filtered by what
+    the user has typed so far.
+    """
+    try:
+        loras = await comfy.fetch_loras()
+    except Exception as exc:
+        log.warning("Could not fetch LoRA list for autocomplete: %s", exc)
+        return []
+    if current_input:
+        matches = [l for l in loras if current_input.lower() in l.lower()]
+    else:
+        matches = loras
+    # Discord allows at most 25 autocomplete choices.
+    return [app_commands.Choice(name=l, value=l) for l in matches[:25]]
+
+
 async def _sdxl_model_autocomplete(interaction: discord.Interaction, current_input: str):
     """Dynamic autocomplete for /sdxl's ``model`` parameter.
 

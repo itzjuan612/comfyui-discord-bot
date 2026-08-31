@@ -42,6 +42,12 @@ MIGRATED_COLUMNS = {
 _conn: sqlite3.Connection | None = None
 _conn_lock = threading.Lock()
 
+# In-memory cache of checkpoints known to lack a bundled text encoder/VAE.
+# Loaded once from the database at startup so per-generation lookups are
+# O(1) in memory; a database write happens only when a new split checkpoint
+# is discovered.
+_split_cache: set[str] = set()
+
 
 def _connect() -> sqlite3.Connection:
     """Return the persistent connection, creating it once (thread-safe)."""
@@ -85,6 +91,42 @@ def init_db() -> None:
         for col, sql_type in MIGRATED_COLUMNS.items():
             if col not in existing:
                 conn.execute(f"ALTER TABLE user_settings ADD COLUMN {col} {sql_type}")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS split_checkpoints (
+                ckpt_name TEXT PRIMARY KEY
+            )
+            """
+        )
+        conn.commit()
+
+
+def load_split_cache() -> None:
+    """Load the split-checkpoint table into the in-memory cache (startup)."""
+    with _locked_conn() as conn:
+        rows = conn.execute("SELECT ckpt_name FROM split_checkpoints").fetchall()
+    _split_cache.update(row[0] for row in rows)
+
+
+def is_split_checkpoint(ckpt_name: str) -> bool:
+    """In-memory check: does this checkpoint lack bundled CLIP/VAE?"""
+    return ckpt_name in _split_cache
+
+
+def mark_split_checkpoint(ckpt_name: str) -> None:
+    """Record a newly discovered split checkpoint (memory + database).
+
+    The INSERT is a no-op if the checkpoint is already stored, so repeated
+    runs for the same checkpoint incur no extra database work.
+    """
+    if ckpt_name in _split_cache:
+        return
+    _split_cache.add(ckpt_name)
+    with _locked_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO split_checkpoints (ckpt_name) VALUES (?)",
+            (ckpt_name,),
+        )
         conn.commit()
 
 

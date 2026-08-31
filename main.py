@@ -16,6 +16,7 @@ def main():
             "config.yaml (the bot auto-generated it with empty values)."
         )
     user_settings.init_db()
+    user_settings.load_split_cache()
     generation_store.init_db()
     moderation.init_db()
     # Seed the owner as an admin so they appear in admin lists and can
