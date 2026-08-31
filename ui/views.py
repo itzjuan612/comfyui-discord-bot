@@ -115,6 +115,11 @@ class DeleteButton(Button):
                 content="\u26a0\ufe0f I don't have permission to delete messages in this channel.",
                 ephemeral=True,
             )
+        except discord.NotFound:
+            log.info(
+                "Message %s was already deleted",
+                interaction.message.id,
+            )
 
 
 class UpscaleModelButton(Button):
