@@ -12,6 +12,6 @@ if errorlevel 1 (
 )
 
 echo Starting ComfyUI Discord bot...
-python bot.py --allow-cors
+python main.py --allow-cors
 
 endlocal
