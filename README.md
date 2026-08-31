@@ -9,7 +9,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | Feature | Description |
 | --- | --- |
 | :art: Ideogram (`/ideogram`) | Generate images with Ideogram 4. Supports prompt, seed, quality preset, megapixels, and aspect ratio. |
-| :art: SDXL (`/sdxl`) | Generate images with SDXL. Supports prompt, negative prompt, seed, steps, width/height, and CFG. Can use any checkpoint in ComfyUI's `models/checkpoints` folder via the `model` parameter. |
+| :art: SDXL (`/sdxl`) | Generate images with SDXL. Supports prompt, negative prompt, seed, steps, width/height, and CFG. Can use any checkpoint in ComfyUI's `models/checkpoints` folder via the `model` parameter, plus up to two LoRAs (`lora1`, `lora2`) with a unified `lora_strength`. Automatically uses separate CLIP/VAE loaders for checkpoints that lack a bundled text encoder/VAE (split checkpoints). |
 | :pencil2: Image-to-Image (`/img2img`) | Edit one image or combine two images using Flux 2 Klein 4B Base. Supports cfg, steps, sampler, megapixels. |
 | :mag: Upscale (`/upscale`) | Upscale an attached image using SDXL, SeedVR2, or FlashVSR. SDXL shows a picker to use any checkpoint in `models/checkpoints`. Supports custom scale factor, prompt, negative, and strength. |
 | :speech_balloon: Prompt Generation (`/gen_prompt`) | Converts a natural-language idea into a structured Ideogram 4 JSON caption using an LLM (OpenAI-compatible endpoint). Includes reasoning-effort selection. |
@@ -51,9 +51,16 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | `width` / `height` | Dimensions, multiple of 64 |
 | `cfg` | Guidance scale |
 | `model` | Checkpoint filename in ComfyUI's `models/checkpoints` folder (optional; defaults to the workflow's checkpoint) |
+| `lora1` | First LoRA name (optional; dynamic autocomplete from `models/loras`) |
+| `lora2` | Second LoRA name (optional; dynamic autocomplete from `models/loras`) |
+| `lora_strength` | Unified LoRA strength applied to both LoRAs (optional, default 1.0) |
 | `stealth` | Ephemeral output |
 
 > **Any checkpoint:** Pass any file name present in ComfyUI's `models/checkpoints` folder via `model` to generate with a different checkpoint instead of the workflow's default. The bot verifies the file exists before running the workflow, and the embed reports the checkpoint actually used. Switching to a different checkpoint frees ComfyUI memory; reusing the same checkpoint does not. If the workflow's default checkpoint (e.g. `SDXL.safetensors`) is missing from `models/checkpoints`, the bot automatically falls back to an available checkpoint (preferring one whose name contains "sdxl") and the embed reports the checkpoint actually used. The `model` parameter uses dynamic autocomplete: as you type, the bot filters the live checkpoint list (cached for 60 seconds), so newly added checkpoint files appear without a bot restart or slash-command re-sync.
+
+> **LoRAs:** `lora1` and `lora2` accept any file in ComfyUI's `models/loras` folder (with dynamic autocomplete). Leaving a slot empty disables that LoRA loader; selecting a file enables it. A single `lora_strength` value is applied to both the model and clip branches of every active LoRA.
+
+> **Split checkpoints:** Some checkpoints do not ship with their own text encoder and VAE. The SDXL workflow contains a `PrimitiveBoolean` switch driving WAS-node-suite `CLIP Input Switch` and `VAE Input Switch` nodes: when `False` it uses the checkpoint's bundled CLIP/VAE, when `True` it uses the separate `qwen_3_06b_base` CLIP and `qwen_image_vae` VAE. The bot detects a split checkpoint automatically: if generation fails because the checkpoint has no valid bundled CLIP, it flips the switch to `True` and retries. Each newly detected split checkpoint is cached (in memory and persisted in `user_settings.db`), so subsequent generations for that checkpoint use the separate loaders directly without an error/retry round trip.
 
 ### `/gen_prompt`
 
@@ -140,8 +147,8 @@ Key modules:
 | `bot.py` | Shared bot instance: creates the Bot, imports the cogs (slash commands), defines `on_ready` (registers the persistent `GenerationView`, syncs slash commands, starts the LLM model refresh loop), and closes the shared HTTP session on shutdown (`on_close`) |
 | `core.py` | Shared runtime: config, owner ID, model/upscale/i2i model lists, sampler & aspect-ratio choices, NSFW guard config, cooldown tracking, memory-freeing state, progress bar, image compression, and error replies |
 | `http_session.py` | Single shared `aiohttp.ClientSession` reused by all HTTP/WebSocket calls (ComfyUI, LLM, Discord image downloads); created lazily and closed on bot shutdown |
-| `comfyui_client.py` | Async HTTP/WS client for ComfyUI (`/prompt`, `/history`, `/view`, `/upload/image`, `/free`); caches the checkpoint list (60s TTL) |
-| `workflow.py` | Loads workflow JSON, converts graph format to API format, patches node inputs from config specs, and runs image/text workflows |
+| `comfyui_client.py` | Async HTTP/WS client for ComfyUI (`/prompt`, `/history`, `/view`, `/upload/image`, `/free`); caches the checkpoint list (60s TTL) and lists LoRA files (`/models/loras`) |
+| `workflow.py` | Loads workflow JSON, converts graph format to API format, patches node inputs from config specs (including LoRA wiring and the SDXL split-checkpoint switch), and runs image/text workflows with automatic split-checkpoint retry |
 | `llm_client.py` | OpenAI-compatible LLM client: model listing, load/unload, reasoning-effort probing, cached model list, and autocomplete |
 | `config_loader.py` | Loads `config.yaml` (auto-generates it with defaults if missing) and backfills workflow model defaults |
 | `user_settings.py` | Per-user defaults (SQLite) |
@@ -207,12 +214,14 @@ Clone these repositories into ComfyUI's `custom_nodes/` folder:
 | `ComfyUI-SeedVR2_VideoUpscaler` | https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler | SeedVR2 upscale workflow |
 | `ComfyUI-FlashVSR_Ultra_Fast` | https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast/ | FlashVSR upscale workflow |
 | `KJNodes for ComfyUI` | https://github.com/kijai/ComfyUI-KJNodes | Ideogram 4 generator & prompt-gen workflow (provides `ResolutionSelector`, `CustomCombo`, `Ideogram4Scheduler`, `DualModelGuider`, `CFGOverride`, `ReferenceLatent`, `EmptyFlux2LatentImage`, `Flux2Scheduler`, `ImageScaleToTotalPixels`, `GetImageSize`, `Random Number`) |
+| `was-node-suite-comfyui` | https://github.com/was/ComfyUI-was-node-suite | SDXL text-to-image workflow (provides `CLIP Input Switch` and `VAE Input Switch` used to route bundled vs. separate CLIP/VAE) |
 
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler
 git clone https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast
 git clone https://github.com/kijai/ComfyUI-KJNodes
+git clone https://github.com/was/ComfyUI-was-node-suite
 ```
 
 ### 5. Download Model Weights
@@ -222,6 +231,8 @@ Place these in ComfyUI's `models/` directories:
 | Model File | Location | Used By |
 | --- | --- | --- |
 | `SDXL.safetensors` | models/checkpoints/ | SDXL text-to-image & SDXL upscale (any SDXL checkpoint works) |
+| `qwen_3_06b_base.safetensors` | models/clip/ | SDXL split-checkpoint text encoder (used when the checkpoint lacks a bundled CLIP) |
+| `qwen_image_vae.safetensors` | models/vae/ | SDXL split-checkpoint VAE (used when the checkpoint lacks a bundled VAE) |
 | `ideogram4_fp8_scaled.safetensors` | models/unet/ (or models/diffusion_models/) | Ideogram 4 text-to-image |
 | `ideogram4_unconditional_fp8_scaled.safetensors` | models/unet/ | Ideogram 4 (unconditional branch) |
 | `flux2-vae.safetensors` | models/vae/ | Ideogram 4 VAE |
@@ -277,7 +288,7 @@ Three SQLite databases are created automatically in the project folder:
 
 | Database | Purpose |
 | --- | --- |
-| `user_settings.db` | Per-user default prompts, CFG, steps, sampler, stealth, etc. |
+| `user_settings.db` | Per-user default prompts, CFG, steps, sampler, stealth, etc., plus a cache of SDXL split checkpoints (those requiring separate CLIP/VAE loaders). |
 | `generations.db` | Stores generation parameters per Discord message ID (for retry/delete) |
 | `moderation.db` | Admin and ban lists |
 
@@ -348,6 +359,8 @@ comfyuidiscord/
 - **Transient error auto-deletion:** Error messages (NSFW blocks, cooldowns, generation failures) are deleted automatically after 5 seconds to keep the channel clean.
 - **`diag.py`:** Standalone diagnostic that prints local vs. server-side slash commands for debugging command sync issues.
 - **Output embed:** Each generation embed lists the seed, steps, CFG, sampler, and the checkpoint actually used, so you can see exactly what ran.
+- **SDXL split-checkpoint cache:** Checkpoints that lack a bundled CLIP/VAE are detected on first use (error + retry) and then cached in memory and persisted in `user_settings.db`. On subsequent runs the bot flips the workflow's switch node to use the separate `qwen_3_06b_base` CLIP and `qwen_image_vae` VAE directly, avoiding the error/retry round trip. The cache loads at startup, so the retry cost is paid only once per checkpoint.
+- **SDXL LoRAs:** `/sdxl` accepts `lora1` and `lora2` (each with dynamic autocomplete over `models/loras`). An empty slot disables that LoRA loader (the node is removed from the graph and the model/clip chain is rewired around it); a selected file enables it. A single `lora_strength` value is applied to both the model and clip branches of every active LoRA.
 - **Random seeds:** When `seed` is omitted, the bot picks a random seed in the range 0 to 2^32-1; the Retry button re-rolls a fresh seed for a new image.
 - **Aspect-ratio short forms:** Aspect ratio inputs accept short forms like `16:9`, which are auto-normalized to the exact ResolutionSelector label (e.g. `16:9 (Widescreen)`).
 - **NSFW negative prompts:** The NSFW keyword filter ignores negative prompts, so a negative prompt containing "nsfw" (meaning "exclude nsfw") is not blocked.
