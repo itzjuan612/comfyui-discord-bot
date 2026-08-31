@@ -45,14 +45,18 @@ def _loop_exception_handler(loop, context):
     exc = context.get("exception")
     message = context.get("message", "")
     # The default handler's message is e.g.
-    # "exception in callback ProactorBasePipeTransport.call_connection_lost(None)".
+    # "Exception in callback ProactorBasePipeTransport._call_connection_lost(None)".
     if isinstance(exc, ConnectionResetError) and "call_connection_lost" in message:
         log.debug("Ignoring harmless Proactor connection-lost reset: %s", exc)
         return
-    # Fall through for anything else.
+    # During Ctrl+C / loop shutdown, asyncio fires cleanup callbacks where
+    # the exception is None. These are harmless.
+    if exc is None:
+        log.debug("Ignoring harmless asyncio shutdown callback: %s", message)
+        return
     log.error(
         "Unhandled asyncio exception: %s", exc,
-        exc_info=exc if exc is not None else None,
+        exc_info=exc,
     )
 
 

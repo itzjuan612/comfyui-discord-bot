@@ -15,8 +15,11 @@ to its creation loop make the old session unusable afterwards.
 """
 
 import asyncio
+import logging
 
 import aiohttp
+
+log = logging.getLogger("http_session")
 
 _session: aiohttp.ClientSession | None = None
 _session_loop: asyncio.AbstractEventLoop | None = None
@@ -41,7 +44,17 @@ def get_session() -> aiohttp.ClientSession:
 async def close_session() -> None:
     """Close the shared session. Called once on bot shutdown."""
     global _session, _session_loop
-    if _session is not None:
+    if _session is None:
+        return
+    try:
         await _session.close()
-        _session = None
-        _session_loop = None
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        # If the loop is being torn down (e.g. Ctrl+C), closing sockets can
+        # raise harmless connection-reset errors. We must still mark the
+        # session as closed so Python's interpreter-exit hooks don't print
+        # "Unclosed client session" warnings.
+        log.debug("Error while closing aiohttp session (ignored): %s", exc)
+    _session = None
+    _session_loop = None
