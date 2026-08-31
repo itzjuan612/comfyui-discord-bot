@@ -229,6 +229,12 @@ class UpscaleModelView(View):
             label = UPSCALE_MODEL_LABELS.get(model, model)
             self.add_item(UpscaleModelButton(model, label))
 
+    async def on_timeout(self):
+        try:
+            await self.message.edit(content="\u23f3 Upscale model selection expired; upscale cancelled.")
+        except Exception:
+            pass
+
     async def on_error(self, interaction: discord.Interaction, error: Exception, item):
         log.warning("UpscaleModelView error: %s", error)
 
