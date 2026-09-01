@@ -1,5 +1,6 @@
-# ComfyUI Discord Bot configuration template
-# Copy this file to config.yaml (or just delete config.yaml and let the bot generate it).
+# ComfyUI Discord Bot configuration
+# Copy this file to config.yaml and fill in your values.
+# The bot will auto-generate this file if config.yaml is missing.
 
 comfyui:
   base_url: "http://localhost:8188"
@@ -16,7 +17,7 @@ nsfw:
   image_threshold: 0.3
 
 discord:
-  token: "PASTE_YOUR_DISCORD_TOKEN_HERE"
+  token: ""
 
 # Predefined bot owner. The owner can delete any
 # generation, restart the bot, and manage admins/bans via /admin.
@@ -52,13 +53,17 @@ models:
     t2i:
       file: workflows/t2i/sdxl_t2i.json
       default_model: "SDXL.safetensors"
-      prompt_node: 3
-      negative_node: 4
-      seed_node: 5
+      prompt_node: 6
+      negative_node: 7
+      seed_node: 114
       seed_key: noise_seed
-      steps_node: 5
-      latent_node: 2
-      cfg_node: 5
+      steps_node: 114
+      latent_node: 5
+      cfg_node: 114
+      sampler_node: 114
+      switch_node: 107
+      lora1_node: 108
+      lora2_node: 109
     upscale:
       file: workflows/upscale/sdxl_upscale.json
       default_model: "SDXL.safetensors"
@@ -71,6 +76,7 @@ models:
       image_node: 1
       scale_node: 2
       scale_key: scale_by
+      switch_node: 203
   seedvr2:
     upscale:
       file: workflows/upscale/SeedVR2.json

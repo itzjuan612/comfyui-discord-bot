@@ -156,15 +156,18 @@ class UpscaleModelButton(Button):
         settings = user_settings.get_settings(interaction.user.id)
         negative = settings["negative_prompt"] or None
         # For SDXL, reuse the checkpoint the source image was created with
-        # so the upscale matches the original model.
+        # so the upscale matches the original model, and reuse the sampler
+        # and scheduler the original image was generated with.
         ckpt_name = view.ckpt_name if model == "sdxl" else None
+        sampler = view.sampler if model == "sdxl" else None
+        scheduler = view.scheduler if model == "sdxl" else None
         try:
             images, meta = await run_image(
                 spec, on_progress=progress.update, model_key=model, prompt=None,
                 negative=negative, strength=None,
                 image_filename=view.uploaded_name, scale=2,
                 input_longest_side=view.input_longest_side,
-                ckpt_name=ckpt_name,
+                ckpt_name=ckpt_name, sampler=sampler, scheduler=scheduler,
             )
             progress.done = True
             for img in images:
@@ -200,7 +203,8 @@ class UpscaleModelButton(Button):
                 "kwargs": {"prompt": None, "negative": negative, "strength": None,
                             "image_filename": view.uploaded_name, "scale": 2,
                             "input_longest_side": view.input_longest_side,
-                            "ckpt_name": ckpt_name},
+                            "ckpt_name": ckpt_name, "sampler": sampler,
+                            "scheduler": scheduler},
             })
         except Exception as exc:
             progress.done = True
@@ -216,12 +220,15 @@ class UpscaleModelView(View):
     """
 
     def __init__(self, uploaded_name: str, input_longest_side: int, stealth: bool = False,
-                 source_model: str | None = None, ckpt_name: str | None = None):
+                 source_model: str | None = None, ckpt_name: str | None = None,
+                 sampler: str | None = None, scheduler: str | None = None):
         super().__init__(timeout=300)
         self.uploaded_name = uploaded_name
         self.input_longest_side = input_longest_side
         self.stealth = stealth
         self.ckpt_name = ckpt_name
+        self.sampler = sampler
+        self.scheduler = scheduler
         # SDXL upscale only works well with SDXL checkpoints, so hide the SDXL
         # option when the source image was not generated with SDXL.
         for model in UPSCALE_MODELS:
@@ -378,7 +385,10 @@ class UpscaleButton(Button):
         # The checkpoint the source image was created with (from /sdxl's saved
         # kwargs). Used so a subsequent SDXL upscale reuses the same checkpoint.
         source_model = params.get("model") if params else None
-        ckpt_name = (params.get("kwargs", {}).get("ckpt_name") if params else None)
+        saved_kwargs = params.get("kwargs", {}) if params else {}
+        ckpt_name = saved_kwargs.get("ckpt_name")
+        sampler = saved_kwargs.get("sampler")
+        scheduler = saved_kwargs.get("scheduler")
         log.info("Upscale 2x clicked for message %s", interaction.message.id)
         image_attachments = [
             a for a in interaction.message.attachments
@@ -410,6 +420,7 @@ class UpscaleButton(Button):
             view=UpscaleModelView(
                 uploaded_name=uploaded_name, input_longest_side=input_longest_side,
                 stealth=stealth, source_model=source_model, ckpt_name=ckpt_name,
+                sampler=sampler, scheduler=scheduler,
             ),
         )
 

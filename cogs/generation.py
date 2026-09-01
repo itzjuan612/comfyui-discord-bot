@@ -85,7 +85,10 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
             "embed_desc": base_desc, "embed_color": int(embed.color),
             "user_id": interaction.user.id,
             # seed=None so Retry rolls a fresh seed and produces a new image.
-            "kwargs": {**gen_kwargs, "seed": None},
+            # sampler/scheduler recorded so an SDXL upscale can reuse them.
+            "kwargs": {**gen_kwargs, "seed": None,
+                        "sampler": meta.get("sampler"),
+                        "scheduler": meta.get("scheduler")},
         })
     except (ComfyUIError, Exception) as exc:
         progress.done = True

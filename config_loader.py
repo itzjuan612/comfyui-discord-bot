@@ -79,6 +79,7 @@ models:
       steps_node: 7
       denoise_node: 7
       cfg_node: 7
+      sampler_node: 7
       image_node: 1
       scale_node: 2
       scale_key: scale_by

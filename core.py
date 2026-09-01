@@ -352,4 +352,6 @@ def meta_lines(meta: dict) -> list[str]:
         lines.append(f"**CFG:** {meta['cfg']:g}")
     if meta.get("sampler") is not None:
         lines.append(f"**Sampler:** {meta['sampler']}")
+    if meta.get("scheduler") is not None:
+        lines.append(f"**Scheduler:** {meta['scheduler']}")
     return lines

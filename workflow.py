@@ -119,6 +119,9 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     sampler = kwargs.get("sampler")
     if sampler is not None:
         set_node(spec.get("sampler_node"), "sampler_name", sampler)
+    scheduler = kwargs.get("scheduler")
+    if scheduler is not None:
+        set_node(spec.get("sampler_node"), "scheduler", scheduler)
 
     # LoRA support: an empty lora name disables the loader node. Since
     # ComfyUI validates lora_name against the available-loras list ("" is
@@ -268,6 +271,7 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
         meta["cfg"] = api_workflow[str(spec["cfg_node"])]["inputs"].get("cfg")
     if spec.get("sampler_node") is not None:
         meta["sampler"] = api_workflow[str(spec["sampler_node"])]["inputs"].get("sampler_name")
+        meta["scheduler"] = api_workflow[str(spec["sampler_node"])]["inputs"].get("scheduler")
 
     # If this checkpoint was previously seen without a bundled text
     # encoder/VAE, use the separate loaders straight away (no error/retry).
