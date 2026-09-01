@@ -212,6 +212,10 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
         steps = settings["steps"]
     if cfg is None:
         cfg = settings["cfg"]
+    if sampler is None:
+        sampler = settings.get("sdxl_sampler")
+    if scheduler is None:
+        scheduler = settings.get("sdxl_scheduler")
 
     # Per-user default SDXL checkpoint (set via /settings). Used only by
     # /sdxl when no explicit model is passed; silently ignored if unavailable.
@@ -322,6 +326,12 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
             return
         if negative is None:
             negative = settings["negative_prompt"] or None
+        # SDXL upscale: fall back to the user's saved SDXL sampler/scheduler defaults.
+        if model == "sdxl":
+            if sampler is None:
+                sampler = settings.get("sdxl_sampler")
+            if scheduler is None:
+                scheduler = settings.get("sdxl_scheduler")
 
         # SDXL upscale: let the user pick any checkpoint from models/checkpoints.
         # Show an ephemeral picker; the selected button runs the upscale.

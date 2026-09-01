@@ -23,6 +23,8 @@ SETTINGS_FIELDS = (
     "img2img_megapixels",
     "stealth",
     "sdxl_checkpoint",
+    "sdxl_sampler",
+    "sdxl_scheduler",
 )
 
 # Columns added after the original schema; applied via ALTER TABLE on upgrade.
@@ -36,6 +38,8 @@ MIGRATED_COLUMNS = {
     "img2img_megapixels": "INTEGER",
     "stealth": "INTEGER",
     "sdxl_checkpoint": "TEXT",
+    "sdxl_sampler": "TEXT",
+    "sdxl_scheduler": "TEXT",
 }
 
 
@@ -136,7 +140,8 @@ def get_settings(discord_id: int) -> dict:
         row = conn.execute(
             "SELECT positive_prompt, negative_prompt, cfg, steps, "
             "ideogram_quality, ideogram_megapixels, ideogram_aspect_ratio, "
-            "img2img_cfg, img2img_steps, img2img_sampler, img2img_megapixels, stealth, sdxl_checkpoint "
+            "img2img_cfg, img2img_steps, img2img_sampler, img2img_megapixels, stealth, "
+            "sdxl_checkpoint, sdxl_sampler, sdxl_scheduler "
             "FROM user_settings WHERE discord_id = ?",
             (discord_id,),
         ).fetchone()
@@ -149,6 +154,7 @@ def get_settings(discord_id: int) -> dict:
             "img2img_cfg": None, "img2img_steps": None,
             "img2img_sampler": None, "img2img_megapixels": None,
             "stealth": False, "sdxl_checkpoint": None,
+            "sdxl_sampler": None, "sdxl_scheduler": None,
         }
     return dict(zip(SETTINGS_FIELDS, row))
 
@@ -179,7 +185,8 @@ def reset_settings(discord_id: int) -> dict:
             "SET positive_prompt = '', negative_prompt = '', cfg = NULL, steps = NULL, "
             "ideogram_quality = NULL, ideogram_megapixels = NULL, ideogram_aspect_ratio = NULL, "
             "img2img_cfg = NULL, img2img_steps = NULL, img2img_sampler = NULL, "
-            "img2img_megapixels = NULL, stealth = NULL, sdxl_checkpoint = NULL "
+            "img2img_megapixels = NULL, stealth = NULL, sdxl_checkpoint = NULL, "
+            "sdxl_sampler = NULL, sdxl_scheduler = NULL "
             "WHERE discord_id = ?",
             (discord_id,),
         )
@@ -200,11 +207,16 @@ def format_settings(s: dict) -> str:
     imap = s.get("img2img_megapixels") if s.get("img2img_megapixels") is not None else "(none)"
     stealth_default = "yes" if s.get("stealth") else "no"
     sdxl_ckpt = s.get("sdxl_checkpoint") or "(none)"
+    sdxl_sampler = s.get("sdxl_sampler") or "(none)"
+    sdxl_scheduler = s.get("sdxl_scheduler") or "(none)"
     return (
         f"• Positive prompt: {s['positive_prompt'] or '(none)'}\n"
         f"• Negative prompt: {s['negative_prompt'] or '(none)'}\n"
+        f"• SDXL checkpoint: {sdxl_ckpt}\n"
         f"• CFG: {cfg}\n"
         f"• Steps: {steps}\n"
+        f"• SDXL sampler: {sdxl_sampler}\n"
+        f"• SDXL scheduler: {sdxl_scheduler}\n"
         f"• Ideogram quality: {iq}\n"
         f"• Ideogram megapixels: {im}\n"
         f"• Ideogram aspect ratio: {ia}\n"
@@ -213,5 +225,4 @@ def format_settings(s: dict) -> str:
         f"• img2img sampler: {isamp}\n"
         f"• img2img megapixels: {imap}\n"
         f"• Stealth (ephemeral default): {stealth_default}\n"
-        f"• SDXL checkpoint (default): {sdxl_ckpt}"
     )

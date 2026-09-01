@@ -108,11 +108,10 @@ After selecting the reasoning effort, the bot composes the prompt via the Ideogr
 View or update per-user defaults:
 
 - `positive_prompt`, `negative_prompt`
-- `cfg`, `steps` (SDXL)
-- `ideogram_quality`, `ideogram_megapixels`, `ideogram_aspect_ratio`
-- `img2img_cfg`, `img2img_steps`, `img2img_sampler`, `img2img_megapixels`
+- `sdxl_checkpoint`, `cfg`, `steps`, `sdxl_sampler`, `sdxl_scheduler` (SDXL)
+- `ideogram_quality`, `ideogram_megapixels`, `ideogram_aspect_ratio` (Ideogram)
+- `img2img_cfg`, `img2img_steps`, `img2img_sampler`, `img2img_megapixels` (img2img Flux.2 Klein)
 - `stealth` (default privacy)
-- `sdxl_checkpoint`
 
 ### `/flush`
 
