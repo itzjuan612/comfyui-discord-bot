@@ -45,14 +45,15 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | Parameter | Description |
 | --- | --- |
 | `prompt` | Text prompt (required) |
+| `model` | Checkpoint filename in ComfyUI's `models/checkpoints` folder (optional; defaults to the workflow's checkpoint) |
 | `negative` | Negative prompt |
-| `seed` | Seed (optional) |
 | `steps` | Sampling steps |
 | `width` / `height` | Dimensions, multiple of 64 |
+| `sampler` / `scheduler` | Sampler and scheduler (user or workflow default if none is chosen) |
 | `cfg` | Guidance scale |
-| `model` | Checkpoint filename in ComfyUI's `models/checkpoints` folder (optional; defaults to the workflow's checkpoint) |
 | `lora1` | First LoRA name (optional; dynamic autocomplete from `models/loras`) |
 | `lora2` | Second LoRA name (optional; dynamic autocomplete from `models/loras`) |
+| `seed` | Seed (optional) |
 | `lora_strength` | Unified LoRA strength applied to both LoRAs (optional, default 1.0) |
 | `stealth` | Ephemeral output |
 
