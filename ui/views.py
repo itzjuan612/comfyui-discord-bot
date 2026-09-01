@@ -261,7 +261,8 @@ class CheckpointPickerView(View):
                  input_longest_side: int | None, stealth: bool,
                  prompt: str | None, negative: str | None,
                  strength: float | None, scale: float | None,
-                 checkpoints: list[str]):
+                 checkpoints: list[str],
+                 sampler: str | None = None, scheduler: str | None = None):
         super().__init__(timeout=300)
         self.spec = spec
         self.model_key = model_key
@@ -272,6 +273,8 @@ class CheckpointPickerView(View):
         self.negative = negative
         self.strength = strength
         self.scale = scale
+        self.sampler = sampler
+        self.scheduler = scheduler
         # "default" maps to the workflow's own checkpoint (with automatic
         # fallback to an available SDXL checkpoint in run_image).
         options = [discord.SelectOption(label="Default (workflow checkpoint)", value="default")]
@@ -304,7 +307,7 @@ class CheckpointPickerView(View):
                 prompt=self.prompt, negative=self.negative, strength=self.strength,
                 image_filename=self.uploaded_name, scale=self.scale,
                 input_longest_side=self.input_longest_side,
-                ckpt_name=ckpt_name,
+                ckpt_name=ckpt_name, sampler=self.sampler, scheduler=self.scheduler,
             )
             progress.done = True
             for img in images:
@@ -338,7 +341,8 @@ class CheckpointPickerView(View):
                 "user_id": interaction.user.id,
                 "kwargs": {"prompt": self.prompt, "negative": self.negative, "strength": self.strength,
                             "image_filename": self.uploaded_name, "scale": self.scale,
-                            "input_longest_side": self.input_longest_side, "ckpt_name": ckpt_name},
+                            "input_longest_side": self.input_longest_side, "ckpt_name": ckpt_name,
+                            "sampler": self.sampler, "scheduler": self.scheduler},
             })
         except Exception as exc:
             progress.done = True

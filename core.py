@@ -64,13 +64,27 @@ I2I_WORKFLOW_CHOICES = [
     app_commands.Choice(name="1 image (edit)", value="single"),
     app_commands.Choice(name="2 images (combine)", value="multi"),
 ]
+# Trimmed down to exactly 25 core options for native static dropdowns
 SAMPLER_NAMES = [
-    "euler", "euler_ancestral", "dpmpp_2m", "dpmpp_2m_heun",
-    "dpm_2", "dpm_3", "lms", "heun", "ddpm", "ddim",
+    "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", 
+    "dpm_3", "dpm_3_ancestral", "dpmpp_2s_ancestral", "dpmpp_2m", 
+    "dpmpp_2m_sde", "dpmpp_2m_sde_gpu", "dpmpp_3m_sde", "dpmpp_3m_sde_gpu", 
+    "dpmpp_sde", "dpmpp_sde_gpu", "lcm", "ddim", "uni_pc", "uni_pc_bh2", 
+    "sa_solver", "seeds_2", "gradient_estimation", "dpm_adaptive", 
+    "ipndf", "deis"
 ]
+
+
 SAMPLER_CHOICES = [
     app_commands.Choice(name=s, value=s)
     for s in SAMPLER_NAMES
+]
+SCHEDULER_NAMES = [
+    "normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform", "beta", "linear_quadratic", "kl_optimal"
+]
+SCHEDULER_CHOICES = [
+    app_commands.Choice(name=s, value=s)
+    for s in SCHEDULER_NAMES
 ]
 def normalize_aspect_ratio(value: str | None) -> str | None:
     """Map user input to the exact ResolutionSelector label.
