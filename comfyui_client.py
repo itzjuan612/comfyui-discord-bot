@@ -177,6 +177,16 @@ class ComfyUIClient:
                 except asyncio.CancelledError:
                     pass
 
+    async def fetch_loras(self, force: bool = False) -> list[str]:
+        """List LoRA files available in ComfyUI's models/loras folder."""
+        session = get_session()
+        async with session.get(f"{self.base_url}/models/loras") as resp:
+            if resp.status != 200:
+                raise ComfyUIError(f"Could not list LoRAs (HTTP {resp.status})")
+            data = await resp.json()
+        items = data.get("loras") if isinstance(data, dict) else data
+        return [item for item in items if isinstance(item, str)]
+
     async def fetch_checkpoints(self, force: bool = False) -> list[str]:
         """List checkpoint files available in ComfyUI's models/checkpoints folder.
 

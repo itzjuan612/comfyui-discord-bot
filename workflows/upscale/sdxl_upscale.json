@@ -17,7 +17,7 @@
     "class_type": "VAEEncode",
     "inputs": {
       "pixels": ["2", 0],
-      "vae": ["4", 2]
+      "vae": ["204", 0]
     }
   },
   "4": {
@@ -30,14 +30,14 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "",
-      "clip": ["4", 1]
+      "clip": ["205", 0]
     }
   },
   "6": {
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "",
-      "clip": ["4", 1]
+      "clip": ["205", 0]
     }
   },
   "7": {
@@ -59,7 +59,7 @@
     "class_type": "VAEDecode",
     "inputs": {
       "samples": ["7", 0],
-      "vae": ["4", 2]
+      "vae": ["204", 0]
     }
   },
   "9": {
@@ -69,5 +69,41 @@
       "images": ["8", 0]
     },
     "is_output": true
+  },
+  "201": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_3_06b_base.safetensors",
+      "type": "stable_diffusion",
+      "device": "default"
+    }
+  },
+  "202": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    }
+  },
+  "203": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "204": {
+    "class_type": "VAE Input Switch",
+    "inputs": {
+      "vae_a": ["202", 0],
+      "vae_b": ["4", 2],
+      "boolean": ["203", 0]
+    }
+  },
+  "205": {
+    "class_type": "CLIP Input Switch",
+    "inputs": {
+      "clip_a": ["201", 0],
+      "clip_b": ["4", 1],
+      "boolean": ["203", 0]
+    }
   }
 }

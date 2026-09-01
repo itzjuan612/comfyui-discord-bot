@@ -2,6 +2,7 @@ import asyncio
 import os
 
 from bot import bot, log, config
+import download_erax
 from http_session import close_session
 from core import user_settings, generation_store, moderation, BOT_OWNER_ID
 
@@ -16,6 +17,7 @@ def main():
             "config.yaml (the bot auto-generated it with empty values)."
         )
     user_settings.init_db()
+    user_settings.load_split_cache()
     generation_store.init_db()
     moderation.init_db()
     # Seed the owner as an admin so they appear in admin lists and can
@@ -24,6 +26,15 @@ def main():
     if BOT_OWNER_ID:
         moderation.promote(BOT_OWNER_ID)
         log.info("Owner %s seeded as admin", BOT_OWNER_ID)
+
+    # Auto-download the NSFW model on first boot if it's missing. This prompts
+    # the user to choose nano/small/medium (or defaults to nano when stdin is
+    # not an interactive terminal). Skipped when image checking is disabled.
+    nsfw_cfg = config.get("nsfw", {})
+    if nsfw_cfg.get("image_check", True) and not download_erax.model_exists():
+        log.info("NSFW model missing. Downloading on first boot...")
+        download_erax.download(download_erax.prompt_size())
+        log.info("NSFW model ready. Continuing startup.")
     # NOTE: the persistent GenerationView is registered inside on_ready()
     # (where an event loop is running), not here, so it can actually dispatch
     # button clicks. Registering it here, before bot.run(), would leave its

@@ -14,10 +14,10 @@ from core import (
     schedule_message_deletion, schedule_original_response_deletion,
     ProgressUpdater, progress_bar, normalize_aspect_ratio,
     UPSCALE_CHOICES, ASPECT_RATIO_CHOICES, QUALITY_CHOICES,
-    SAMPLER_CHOICES, I2I_WORKFLOW_CHOICES,
+    SAMPLER_CHOICES, SCHEDULER_CHOICES, I2I_WORKFLOW_CHOICES,
     ComfyUIError,
 )
-from llm_client import _sdxl_model_autocomplete
+from llm_client import _sdxl_model_autocomplete, _sdxl_lora_autocomplete
 from workflow import run_image
 from ui.views import GenerationView, CheckpointPickerView
 
@@ -85,7 +85,10 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
             "embed_desc": base_desc, "embed_color": int(embed.color),
             "user_id": interaction.user.id,
             # seed=None so Retry rolls a fresh seed and produces a new image.
-            "kwargs": {**gen_kwargs, "seed": None},
+            # sampler/scheduler recorded so an SDXL upscale can reuse them.
+            "kwargs": {**gen_kwargs, "seed": None,
+                        "sampler": meta.get("sampler"),
+                        "scheduler": meta.get("scheduler")},
         })
     except (ComfyUIError, Exception) as exc:
         progress.done = True
@@ -152,20 +155,34 @@ async def ideogram(interaction: discord.Interaction, prompt: str,
 @app_commands.describe(prompt="Text prompt")
 @app_commands.describe(model="Checkpoint in models/checkpoints (optional)")
 @app_commands.describe(negative="Negative prompt")
-@app_commands.describe(seed="Seed (optional)")
 @app_commands.describe(steps="Sampling steps")
 @app_commands.describe(width="Width in pixels, multiple of 64")
 @app_commands.describe(height="Height in pixels, multiple of 64")
+@app_commands.describe(sampler="Sampler (optional)")
+@app_commands.describe(scheduler="Scheduler (optional)")
 @app_commands.describe(cfg="CFG guidance scale")
+@app_commands.describe(lora1="First LoRA (optional)")
+@app_commands.describe(lora2="Second LoRA (optional)")
+@app_commands.describe(seed="Seed (optional)")
+@app_commands.describe(lora_strength="LoRA strength (optional, default 1.0)")
 @app_commands.describe(stealth="Ephemeral output, visible only to you")
+@app_commands.choices(sampler=SAMPLER_CHOICES)
+@app_commands.choices(scheduler=SCHEDULER_CHOICES)
+@app_commands.autocomplete(lora1=_sdxl_lora_autocomplete)
+@app_commands.autocomplete(lora2=_sdxl_lora_autocomplete)
 async def sdxl(interaction: discord.Interaction, prompt: str,
                 model: str | None = None,
                 negative: str | None = None,
-                seed: int | None = None,
                 steps: int | None = None,
                 width: int | None = None,
                 height: int | None = None,
+                sampler: str | None = None,
+                scheduler: str | None = None,
                 cfg: float | None = None,
+                lora1: str | None = None,
+                lora2: str | None = None,
+                seed: int | None = None,
+                lora_strength: float | None = None,
                 stealth: bool | None = None):
     if stealth is None:
         stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
@@ -195,6 +212,10 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
         steps = settings["steps"]
     if cfg is None:
         cfg = settings["cfg"]
+    if sampler is None:
+        sampler = settings.get("sdxl_sampler")
+    if scheduler is None:
+        scheduler = settings.get("sdxl_scheduler")
 
     # Per-user default SDXL checkpoint (set via /settings). Used only by
     # /sdxl when no explicit model is passed; silently ignored if unavailable.
@@ -238,8 +259,13 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
         "steps": steps,
         "width": width,
         "height": height,
+        "sampler": sampler,
+        "scheduler": scheduler,
         "cfg": cfg,
         "ckpt_name": model,
+        "lora1": lora1,
+        "lora2": lora2,
+        "lora_strength": lora_strength,
     }
     await run_t2i_generation(interaction, "sdxl", prompt, stealth, gen_kwargs)
 @bot.tree.command(name="upscale", description="Upscale an image from your gallery")
@@ -248,11 +274,17 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
 @app_commands.describe(prompt="Prompt to guide the upscale (optional)")
 @app_commands.describe(negative="Negative prompt (optional)")
 @app_commands.describe(strength="Denoise strength, 0-1 (optional)")
+@app_commands.describe(sampler="Sampler (SDXL only, optional)")
+@app_commands.describe(scheduler="Scheduler (SDXL only, optional)")
 @app_commands.describe(scale="Upscale factor (optional, e.g. 2 or 3)")
 @app_commands.describe(stealth="Ephemeral output, visible only to you")
+@app_commands.choices(sampler=SAMPLER_CHOICES)
+@app_commands.choices(scheduler=SCHEDULER_CHOICES)
 async def upscale(interaction: discord.Interaction, model: str, image: discord.Attachment,
                   prompt: str | None = None,
                   negative: str | None = None, strength: float | None = None,
+                  sampler: str | None = None,
+                  scheduler: str | None = None,
                   scale: float | None = None, stealth: bool | None = None):
     if stealth is None:
         stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
@@ -294,6 +326,12 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
             return
         if negative is None:
             negative = settings["negative_prompt"] or None
+        # SDXL upscale: fall back to the user's saved SDXL sampler/scheduler defaults.
+        if model == "sdxl":
+            if sampler is None:
+                sampler = settings.get("sdxl_sampler")
+            if scheduler is None:
+                scheduler = settings.get("sdxl_scheduler")
 
         # SDXL upscale: let the user pick any checkpoint from models/checkpoints.
         # Show an ephemeral picker; the selected button runs the upscale.
@@ -312,6 +350,7 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
                 view=CheckpointPickerView(
                     spec, model, uploaded_name, input_longest_side, stealth,
                     prompt, negative, strength, scale, checkpoints,
+                    sampler, scheduler,
                 ),
             )
             return

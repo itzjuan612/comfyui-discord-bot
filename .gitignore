@@ -7,6 +7,9 @@ config.yaml
 *.db-shm
 *.db-wal
 
+# Model binaries (downloaded/exported at runtime)
+*.pt
+
 # Python
 __pycache__/
 *.pyc

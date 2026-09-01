@@ -15,11 +15,12 @@ comfyui:
 nsfw:
   # Optional extra keywords beyond the built-in list.
   extra_terms: []
-  # Image-level NSFW check (lightweight CPU ONNX classifier).
+  # Image-level NSFW check (EraX-NSFW-V1.0, lightweight CPU ONNX detector).
   # Runs on every generated image; NSFW output is allowed only in
-  # Discord-marked NSFW channels.
+  # Discord-marked NSFW channels. image_threshold is the detection
+  # confidence [0..1] that flags an image as NSFW.
   image_check: true
-  image_threshold: 0.5
+  image_threshold: 0.3
 
 discord:
   token: ""
@@ -58,13 +59,17 @@ models:
     t2i:
       file: workflows/t2i/sdxl_t2i.json
       default_model: "SDXL.safetensors"
-      prompt_node: 3
-      negative_node: 4
-      seed_node: 5
+      prompt_node: 6
+      negative_node: 7
+      seed_node: 114
       seed_key: noise_seed
-      steps_node: 5
-      latent_node: 2
-      cfg_node: 5
+      steps_node: 114
+      latent_node: 5
+      cfg_node: 114
+      sampler_node: 114
+      switch_node: 107
+      lora1_node: 108
+      lora2_node: 109
     upscale:
       file: workflows/upscale/sdxl_upscale.json
       default_model: "SDXL.safetensors"
@@ -74,9 +79,11 @@ models:
       steps_node: 7
       denoise_node: 7
       cfg_node: 7
+      sampler_node: 7
       image_node: 1
       scale_node: 2
       scale_key: scale_by
+      switch_node: 203
   seedvr2:
     upscale:
       file: workflows/upscale/SeedVR2.json

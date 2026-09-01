@@ -2,7 +2,7 @@ import json
 import os
 import random
 
-from core import config, comfy, log, normalize_aspect_ratio, last_workflow_by_model, last_ckpt_by_model
+from core import config, comfy, log, normalize_aspect_ratio, last_workflow_by_model, last_ckpt_by_model, ComfyUIError, user_settings
 
 
 def load_workflow(file_path: str) -> dict:
@@ -119,6 +119,51 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     sampler = kwargs.get("sampler")
     if sampler is not None:
         set_node(spec.get("sampler_node"), "sampler_name", sampler)
+    scheduler = kwargs.get("scheduler")
+    if scheduler is not None:
+        set_node(spec.get("sampler_node"), "scheduler", scheduler)
+
+    # LoRA support: an empty lora name disables the loader node. Since
+    # ComfyUI validates lora_name against the available-loras list ("" is
+    # not a valid value), disabled loaders are removed from the graph and
+    # the model/clip chain is rewired around them. One strength value is
+    # applied to both the model and clip branches of every active loader.
+    lora1 = kwargs.get("lora1")
+    lora2 = kwargs.get("lora2")
+    lora_strength = kwargs.get("lora_strength")
+    strength_val = float(lora_strength) if lora_strength is not None else None
+    active = []
+    for lora_name, lora_node in ((lora1, spec.get("lora1_node")), (lora2, spec.get("lora2_node"))):
+        if lora_node is None:
+            continue
+        nid = str(lora_node)
+        if lora_name:
+            node = workflow[nid]
+            node["inputs"]["lora_name"] = lora_name
+            if strength_val is not None:
+                node["inputs"]["strength_model"] = strength_val
+                node["inputs"]["strength_clip"] = strength_val
+            active.append(nid)
+        else:
+            workflow.pop(nid)  # disabled: remove so it is not validated
+    if active or spec.get("lora1_node") is not None or spec.get("lora2_node") is not None:
+        # Rebuild the chain: checkpoint (model) / CLIP switch (clip) ->
+        # active LoRA loaders -> sampler (model) and text encoders (clip).
+        ckpt_nid = next((str(k) for k, v in workflow.items()
+                         if v["class_type"] == "CheckpointLoaderSimple"), None)
+        clip_nid = next((str(k) for k, v in workflow.items()
+                         if v["class_type"] == "CLIP Input Switch"), None)
+        model_src, clip_src = ckpt_nid, clip_nid
+        for nid in active:
+            # Clip output index: 0 from the CLIP switch, 1 from a LoraLoader.
+            workflow[nid]["inputs"]["model"] = [model_src, 0]
+            workflow[nid]["inputs"]["clip"] = [clip_src, 0 if clip_src == clip_nid else 1]
+            model_src, clip_src = nid, nid
+        clip_out = 1 if active else 0
+        sampler_nid = str(spec.get("steps_node"))
+        workflow[sampler_nid]["inputs"]["model"] = [model_src, 0]
+        for nid in (spec.get("prompt_node"), spec.get("negative_node")):
+            workflow[str(nid)]["inputs"]["clip"] = [clip_src, clip_out]
 
     # Ideogram: resolution selector (megapixels + aspect ratio) and quality preset.
     megapixels = kwargs.get("megapixels")
@@ -226,9 +271,30 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
         meta["cfg"] = api_workflow[str(spec["cfg_node"])]["inputs"].get("cfg")
     if spec.get("sampler_node") is not None:
         meta["sampler"] = api_workflow[str(spec["sampler_node"])]["inputs"].get("sampler_name")
+        meta["scheduler"] = api_workflow[str(spec["sampler_node"])]["inputs"].get("scheduler")
+
+    # If this checkpoint was previously seen without a bundled text
+    # encoder/VAE, use the separate loaders straight away (no error/retry).
+    switch_node = spec.get("switch_node")
+    if switch_node is not None and effective_ckpt and user_settings.is_split_checkpoint(effective_ckpt):
+        api_workflow[str(switch_node)]["inputs"]["value"] = True
+        log.info("Checkpoint %r cached as split; using separate CLIP/VAE loaders", effective_ckpt)
 
     prompt_id, client_id = await comfy.queue_prompt(api_workflow)
-    filenames = await comfy.wait_for_result(prompt_id, client_id, on_progress=on_progress)
+    try:
+        filenames = await comfy.wait_for_result(prompt_id, client_id, on_progress=on_progress)
+    except ComfyUIError as exc:
+        # If the checkpoint has no bundled text encoder/VAE, the run fails
+        # (ComfyUI reports a generic "error"). Flip the switch node so the
+        # separate CLIPLoader/VAELoader are used, and retry once.
+        if switch_node is not None and api_workflow[str(switch_node)]["inputs"]["value"] is False:
+            log.info("Checkpoint %r likely lacks bundled CLIP/VAE; enabling split loaders and retrying", effective_ckpt)
+            user_settings.mark_split_checkpoint(effective_ckpt)
+            api_workflow[str(switch_node)]["inputs"]["value"] = True
+            prompt_id, client_id = await comfy.queue_prompt(api_workflow)
+            filenames = await comfy.wait_for_result(prompt_id, client_id, on_progress=on_progress)
+        else:
+            raise
     images = []
     for filename in filenames:
         images.append(await comfy.fetch_image(filename))

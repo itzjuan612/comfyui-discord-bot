@@ -23,6 +23,8 @@ SETTINGS_FIELDS = (
     "img2img_megapixels",
     "stealth",
     "sdxl_checkpoint",
+    "sdxl_sampler",
+    "sdxl_scheduler",
 )
 
 # Columns added after the original schema; applied via ALTER TABLE on upgrade.
@@ -36,11 +38,19 @@ MIGRATED_COLUMNS = {
     "img2img_megapixels": "INTEGER",
     "stealth": "INTEGER",
     "sdxl_checkpoint": "TEXT",
+    "sdxl_sampler": "TEXT",
+    "sdxl_scheduler": "TEXT",
 }
 
 
 _conn: sqlite3.Connection | None = None
 _conn_lock = threading.Lock()
+
+# In-memory cache of checkpoints known to lack a bundled text encoder/VAE.
+# Loaded once from the database at startup so per-generation lookups are
+# O(1) in memory; a database write happens only when a new split checkpoint
+# is discovered.
+_split_cache: set[str] = set()
 
 
 def _connect() -> sqlite3.Connection:
@@ -85,6 +95,42 @@ def init_db() -> None:
         for col, sql_type in MIGRATED_COLUMNS.items():
             if col not in existing:
                 conn.execute(f"ALTER TABLE user_settings ADD COLUMN {col} {sql_type}")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS split_checkpoints (
+                ckpt_name TEXT PRIMARY KEY
+            )
+            """
+        )
+        conn.commit()
+
+
+def load_split_cache() -> None:
+    """Load the split-checkpoint table into the in-memory cache (startup)."""
+    with _locked_conn() as conn:
+        rows = conn.execute("SELECT ckpt_name FROM split_checkpoints").fetchall()
+    _split_cache.update(row[0] for row in rows)
+
+
+def is_split_checkpoint(ckpt_name: str) -> bool:
+    """In-memory check: does this checkpoint lack bundled CLIP/VAE?"""
+    return ckpt_name in _split_cache
+
+
+def mark_split_checkpoint(ckpt_name: str) -> None:
+    """Record a newly discovered split checkpoint (memory + database).
+
+    The INSERT is a no-op if the checkpoint is already stored, so repeated
+    runs for the same checkpoint incur no extra database work.
+    """
+    if ckpt_name in _split_cache:
+        return
+    _split_cache.add(ckpt_name)
+    with _locked_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO split_checkpoints (ckpt_name) VALUES (?)",
+            (ckpt_name,),
+        )
         conn.commit()
 
 
@@ -94,7 +140,8 @@ def get_settings(discord_id: int) -> dict:
         row = conn.execute(
             "SELECT positive_prompt, negative_prompt, cfg, steps, "
             "ideogram_quality, ideogram_megapixels, ideogram_aspect_ratio, "
-            "img2img_cfg, img2img_steps, img2img_sampler, img2img_megapixels, stealth, sdxl_checkpoint "
+            "img2img_cfg, img2img_steps, img2img_sampler, img2img_megapixels, stealth, "
+            "sdxl_checkpoint, sdxl_sampler, sdxl_scheduler "
             "FROM user_settings WHERE discord_id = ?",
             (discord_id,),
         ).fetchone()
@@ -107,6 +154,7 @@ def get_settings(discord_id: int) -> dict:
             "img2img_cfg": None, "img2img_steps": None,
             "img2img_sampler": None, "img2img_megapixels": None,
             "stealth": False, "sdxl_checkpoint": None,
+            "sdxl_sampler": None, "sdxl_scheduler": None,
         }
     return dict(zip(SETTINGS_FIELDS, row))
 
@@ -137,7 +185,8 @@ def reset_settings(discord_id: int) -> dict:
             "SET positive_prompt = '', negative_prompt = '', cfg = NULL, steps = NULL, "
             "ideogram_quality = NULL, ideogram_megapixels = NULL, ideogram_aspect_ratio = NULL, "
             "img2img_cfg = NULL, img2img_steps = NULL, img2img_sampler = NULL, "
-            "img2img_megapixels = NULL, stealth = NULL, sdxl_checkpoint = NULL "
+            "img2img_megapixels = NULL, stealth = NULL, sdxl_checkpoint = NULL, "
+            "sdxl_sampler = NULL, sdxl_scheduler = NULL "
             "WHERE discord_id = ?",
             (discord_id,),
         )
@@ -158,11 +207,16 @@ def format_settings(s: dict) -> str:
     imap = s.get("img2img_megapixels") if s.get("img2img_megapixels") is not None else "(none)"
     stealth_default = "yes" if s.get("stealth") else "no"
     sdxl_ckpt = s.get("sdxl_checkpoint") or "(none)"
+    sdxl_sampler = s.get("sdxl_sampler") or "(none)"
+    sdxl_scheduler = s.get("sdxl_scheduler") or "(none)"
     return (
         f"• Positive prompt: {s['positive_prompt'] or '(none)'}\n"
         f"• Negative prompt: {s['negative_prompt'] or '(none)'}\n"
+        f"• SDXL checkpoint: {sdxl_ckpt}\n"
         f"• CFG: {cfg}\n"
         f"• Steps: {steps}\n"
+        f"• SDXL sampler: {sdxl_sampler}\n"
+        f"• SDXL scheduler: {sdxl_scheduler}\n"
         f"• Ideogram quality: {iq}\n"
         f"• Ideogram megapixels: {im}\n"
         f"• Ideogram aspect ratio: {ia}\n"
@@ -171,5 +225,4 @@ def format_settings(s: dict) -> str:
         f"• img2img sampler: {isamp}\n"
         f"• img2img megapixels: {imap}\n"
         f"• Stealth (ephemeral default): {stealth_default}\n"
-        f"• SDXL checkpoint (default): {sdxl_ckpt}"
     )

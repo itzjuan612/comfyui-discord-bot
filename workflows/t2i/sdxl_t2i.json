@@ -1,63 +1,217 @@
 {
-  "1": {
-    "class_type": "CheckpointLoaderSimple",
-    "inputs": {
-      "ckpt_name": "SDXL.safetensors"
-    }
-  },
-  "2": {
-    "class_type": "EmptyLatentImage",
+  "5": {
     "inputs": {
       "width": 1024,
       "height": 1024,
       "batch_size": 1
-    }
-  },
-  "3": {
-    "class_type": "CLIPTextEncode",
-    "inputs": {
-      "text": "",
-      "clip": ["1", 1]
-    }
-  },
-  "4": {
-    "class_type": "CLIPTextEncode",
-    "inputs": {
-      "text": "",
-      "clip": ["1", 1]
-    }
-  },
-  "5": {
-    "class_type": "KSamplerAdvanced",
-    "inputs": {
-      "model": ["1", 0],
-      "positive": ["3", 0],
-      "negative": ["4", 0],
-      "latent_image": ["2", 0],
-      "add_noise": "enable",
-      "noise_seed": 0,
-      "steps": 100,
-      "cfg": 4,
-      "sampler_name": "dpmpp_2m_sde",
-      "scheduler": "karras",
-      "start_at_step": 0,
-      "end_at_step": 100,
-      "return_with_leftover_noise": "enable"
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Imagen Latente Vacía"
     }
   },
   "6": {
-    "class_type": "VAEDecode",
     "inputs": {
-      "samples": ["5", 0],
-      "vae": ["1", 2]
+      "text": "",
+      "clip": [
+        "109",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Codificar Texto CLIP (Prompt)"
     }
   },
   "7": {
-    "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "comfyuidiscord",
-      "images": ["6", 0]
+      "text": "",
+      "clip": [
+        "109",
+        1
+      ]
     },
-    "is_output": true
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Codificar Texto CLIP (Prompt)"
+    }
+  },
+  "17": {
+    "inputs": {
+      "samples": [
+        "114",
+        0
+      ],
+      "vae": [
+        "104",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Decodificación VAE"
+    }
+  },
+  "19": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "17",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Guardar Imagen"
+    }
+  },
+  "53": {
+    "inputs": {
+      "ckpt_name": "SDXL.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load checkpoint"
+    }
+  },
+  "101": {
+    "inputs": {
+      "clip_name": "qwen_3_06b_base.safetensors",
+      "type": "stable_diffusion",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Cargar CLIP"
+    }
+  },
+  "102": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Cargar VAE"
+    }
+  },
+  "104": {
+    "inputs": {
+      "vae_a": [
+        "102",
+        0
+      ],
+      "vae_b": [
+        "53",
+        2
+      ],
+      "boolean": [
+        "107",
+        0
+      ]
+    },
+    "class_type": "VAE Input Switch",
+    "_meta": {
+      "title": "VAE Input Switch"
+    }
+  },
+  "105": {
+    "inputs": {
+      "clip_a": [
+        "101",
+        0
+      ],
+      "clip_b": [
+        "53",
+        1
+      ],
+      "boolean": [
+        "107",
+        0
+      ]
+    },
+    "class_type": "CLIP Input Switch",
+    "_meta": {
+      "title": "CLIP Input Switch"
+    }
+  },
+  "107": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Switch between single CKPT or split CKPT"
+    }
+  },
+  "108": {
+    "inputs": {
+      "lora_name": "",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "53",
+        0
+      ],
+      "clip": [
+        "105",
+        0
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "LoRA 1"
+    }
+  },
+  "109": {
+    "inputs": {
+      "lora_name": "",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "108",
+        0
+      ],
+      "clip": [
+        "108",
+        1
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "LoRA 2"
+    }
+  },
+  "114": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": 0,
+      "steps": 20,
+      "cfg": 4,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "start_at_step": 0,
+      "end_at_step": 100,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "109",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced) - BASE"
+    }
   }
 }
