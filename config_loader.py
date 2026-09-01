@@ -82,6 +82,7 @@ models:
       image_node: 1
       scale_node: 2
       scale_key: scale_by
+      switch_node: 203
   seedvr2:
     upscale:
       file: workflows/upscale/SeedVR2.json
