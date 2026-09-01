@@ -15,11 +15,12 @@ comfyui:
 nsfw:
   # Optional extra keywords beyond the built-in list.
   extra_terms: []
-  # Image-level NSFW check (lightweight CPU ONNX classifier).
+  # Image-level NSFW check (EraX-NSFW-V1.0, lightweight CPU ONNX detector).
   # Runs on every generated image; NSFW output is allowed only in
-  # Discord-marked NSFW channels.
+  # Discord-marked NSFW channels. image_threshold is the detection
+  # confidence [0..1] that flags an image as NSFW.
   image_check: true
-  image_threshold: 0.5
+  image_threshold: 0.3
 
 discord:
   token: ""
