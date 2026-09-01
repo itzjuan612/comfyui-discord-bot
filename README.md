@@ -236,12 +236,12 @@ Place these in ComfyUI's `models/` directories:
 | [ideogram4_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Ideogram-4/blob/main/diffusion_models/ideogram4_fp8_scaled.safetensors) | models/unet/ (or models/diffusion_models/) | Ideogram 4 text-to-image |
 | [ideogram4_unconditional_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Ideogram-4/blob/main/diffusion_models/ideogram4_unconditional_fp8_scaled.safetensors) | models/unet/ | Ideogram 4 (unconditional branch) |
 | [flux2-vae.safetensors](https://huggingface.co/Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors) | models/vae/ | Ideogram 4 VAE |
-| [qwen3vl_8b_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Ideogram-4/blob/main/text_encoders/qwen3vl_8b_fp8_scaled.safetensors) | models/clip/ | Ideogram 4 CLIP |
-| [flux-2-klein-base-4b-fp8.safetensors](https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/blob/main/flux-2-klein-base-4b-fp8.safetensors) | models/unet/ | Flux 2 Klein 4B img2img |
+| [qwen3vl_8b_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Ideogram-4/blob/main/text_encoders/qwen3vl_8b_fp8_scaled.safetensors) | models/text_encoders/ | Ideogram 4 CLIP |
+| [flux-2-klein-base-4b-fp8.safetensors](https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/blob/main/flux-2-klein-base-4b-fp8.safetensors) | models/diffusion_models/ | Flux 2 Klein 4B img2img |
 | [full_encoder_small_decoder.safetensors](https://huggingface.co/black-forest-labs/FLUX.2-small-decoder/blob/main/full_encoder_small_decoder.safetensors) | models/vae/ | Flux 2 Klein VAE |
-| [qwen_3_4b.safetensors](https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/text_encoders/qwen_3_4b.safetensors) | models/clip/ | Flux 2 Klein CLIP |
-| `seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors` | models/ (auto-downloaded by node) | SeedVR2 upscale |
-| `ema_vae_fp16.safetensors` | models/ (auto-downloaded by node) | SeedVR2 VAE |
+| [qwen_3_4b.safetensors](https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/text_encoders/qwen_3_4b.safetensors) | models/text_encoders/ | Flux 2 Klein CLIP |
+| `seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors` | models/SEEDVR2 (auto-downloaded by node) | SeedVR2 upscale |
+| `ema_vae_fp16.safetensors` | models/SEEDVR2 (auto-downloaded by node) | SeedVR2 VAE |
 | `FlashVSR-v1.1` | auto-downloaded by the FlashVSR node | FlashVSR upscale |
 
 Note: SeedVR2 and FlashVSR nodes can auto-download their weights on first use. The other models must be placed manually.
