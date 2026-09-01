@@ -3,6 +3,7 @@ from discord import app_commands
 
 from bot import bot
 from core import user_settings, QUALITY_CHOICES, ASPECT_RATIO_CHOICES, SAMPLER_CHOICES, SCHEDULER_CHOICES
+from llm_client import _sdxl_model_autocomplete
 
 
 @bot.tree.command(name="settings", description="View or set your personal generation defaults")
@@ -23,6 +24,7 @@ from core import user_settings, QUALITY_CHOICES, ASPECT_RATIO_CHOICES, SAMPLER_C
 @app_commands.describe(img2img_sampler="Default img2img sampler")
 @app_commands.describe(img2img_megapixels="Default img2img resolution in megapixels")
 @app_commands.describe(stealth="Default privacy (ephemeral) for all your generations")
+@app_commands.autocomplete(sdxl_checkpoint=_sdxl_model_autocomplete)
 @app_commands.describe(sdxl_checkpoint="Default SDXL checkpoint (models/checkpoints), used by /sdxl and /upscale (SDXL)")
 @app_commands.describe(sdxl_sampler="Default SDXL sampler, used by /sdxl and /upscale (SDXL)")
 @app_commands.describe(sdxl_scheduler="Default SDXL scheduler, used by /sdxl and /upscale (SDXL)")
