@@ -20,7 +20,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | :rocket: Upscale 2x Button | One-click upscale of any generated image, with model picker. For SDXL images, the SDXL option reuses the checkpoint the image was created with; for non-SDXL images the SDXL option is hidden (SDXL upscale works best with SDXL checkpoints). |
 | :paintbrush: Edit Image Button | Opens a modal to run the Flux 2 Klein 4B single-image edit workflow on an output. |
 | :gear: Per-User Settings (`/settings`, `/reset_settings`) | Saved defaults for prompts, CFG, steps, sampler, quality, megapixels, aspect ratio, and stealth. Stored in SQLite. |
-| :shield: NSFW Guardrail | Keyword-based prompt filter + CPU ONNX image classifier. NSFW content is blocked unless the channel is Discord-marked NSFW. |
+| :shield: NSFW Guardrail | Keyword-based prompt filter + CPU ONNX image check using the EraX-NSFW-V1.0 detector (runs in RAM, no GPU). NSFW content is blocked unless the channel is Discord-marked NSFW. |
 | :police_officer: Moderation | Ban/unban users, promote/demote admins, view user list. Stored in SQLite. |
 | :broom: Flush (`/flush`) | Unloads all ComfyUI models and execution cache to free VRAM/RAM. |
 | :hammer_and_wrench: Admin Panel (`/admin`) | Owner can restart the bot, manage admins, and manage bans. |
@@ -154,7 +154,7 @@ Key modules:
 | `user_settings.py` | Per-user defaults (SQLite) |
 | `generation_store.py` | Persisted generation params per message (SQLite) |
 | `moderation.py` | Admin/ban lists (SQLite) |
-| `nsfw_guard.py` | Keyword + ONNX image NSFW classifier |
+| `nsfw_guard.py` | Keyword NSFW filter + EraX-NSFW-V1.0 CPU ONNX image detector |
 | `diag.py` | Standalone diagnostic: prints local vs. server-side slash commands for debugging sync issues |
 | `cogs/` | Slash commands: `generation.py` (/ideogram, /sdxl, /upscale, /img2img, /flush), `llm.py` (/gen_prompt, /llm_models), `settings.py` (/settings, /reset_settings), `admin.py` (/admin) |
 | `ui/views.py` | All interactive UI: generation buttons (Retry/Delete/Upscale/Edit), checkpoint picker, reasoning-effort picker, and admin panel views |
@@ -201,7 +201,7 @@ llm:
   thinking_default: "medium"         # default reasoning effort for /gen_prompt
 nsfw:
   image_check: true
-  image_threshold: 0.5
+  image_threshold: 0.3              # detection confidence [0..1] that flags an image as NSFW
   extra_terms: []                    # optional: extra NSFW keywords beyond the built-in list
 ```
 
@@ -308,7 +308,8 @@ comfyuidiscord/
 |-- config_loader.py        # YAML loader + model-default backfill
 |-- generation_store.py     # Generation params (SQLite)
 |-- moderation.py           # Admin/ban (SQLite)
-|-- nsfw_guard.py           # NSFW text + image guard
+|-- nsfw_guard.py           # NSFW text + EraX-NSFW-V1.0 CPU ONNX image detector
+|-- download_erax.py        # Downloads/exports the NSFW ONNX model (nano/small/medium)
 |-- user_settings.py        # Per-user settings (SQLite)
 |-- generations.db          # Generation params database (SQLite, auto-created)
 |-- moderation.db           # Admin/ban database (SQLite, auto-created)
@@ -319,6 +320,8 @@ comfyuidiscord/
 |-- LICENSE.txt
 |-- banner.png
 |-- .gitignore
+|-- models/
+|   `-- erax_nsfw.onnx        # EraX-NSFW-V1.0 CPU ONNX detector (auto-downloaded if missing)
 |-- cogs/
 |   |-- __init__.py         # Package marker
 |   |-- generation.py       # /ideogram, /sdxl, /upscale, /img2img, /flush
@@ -348,7 +351,7 @@ comfyuidiscord/
 - The bot requires ComfyUI to be running before starting.
 - The `--allow-cors` flag is passed to `main.py` (it does not affect ComfyUI itself).
 - Images larger than 18 MB are automatically re-encoded as JPEG to stay under Discord's upload limit.
-- The NSFW image check uses a lightweight CPU-only ONNX classifier (open_nsfw ResNet-50) to avoid VRAM contention with ComfyUI.
+- The NSFW image check uses **EraX-NSFW-V1.0** (a YOLO11 nano detector exported to ONNX) running entirely on CPU via ONNX Runtime, so it uses RAM rather than VRAM and does not contend with ComfyUI. The model ships in `models/erax_nsfw.onnx`; if it's missing, the bot auto-downloads and exports it on first boot (you can pick nano/small/medium, defaulting to nano).
 - Persistent buttons (Retry, Delete, Upscale, Edit) survive bot restarts via a globally registered Discord View.
 - All HTTP and WebSocket traffic (ComfyUI API, LLM endpoint, Discord image downloads) goes through a single shared `aiohttp.ClientSession` (`http_session.py`) instead of creating a new session per request. This enables TCP Keep-Alive connection reuse, avoids repeated handshakes, and prevents file-descriptor exhaustion during concurrent generations. The session is created lazily (and recreated if the event loop changes) and closed once when the bot shuts down.
 - **LLM model caching:** The LLM model list is cached and refreshed every 300 seconds by a background loop. A failed refresh keeps the previous cache so slash-command autocomplete never breaks.
