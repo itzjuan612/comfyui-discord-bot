@@ -221,7 +221,7 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler
 git clone https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast
 git clone https://github.com/kijai/ComfyUI-KJNodes
-git clone https://github.com/was/ComfyUI-was-node-suite
+git clone https://github.com/ltdrdata/was-node-suite-comfyui
 ```
 
 ### 5. Download Model Weights
