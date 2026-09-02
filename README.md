@@ -149,7 +149,7 @@ Key modules:
 | `http_session.py` | Single shared `aiohttp.ClientSession` reused by all HTTP/WebSocket calls (ComfyUI, LLM, Discord image downloads); created lazily and closed on bot shutdown |
 | `comfyui_client.py` | Async HTTP/WS client for ComfyUI (`/prompt`, `/history`, `/view`, `/upload/image`, `/free`); caches the checkpoint list (60s TTL) and lists LoRA files (`/models/loras`) |
 | `workflow.py` | Loads workflow JSON, converts graph format to API format, patches node inputs from config specs (including LoRA wiring and the SDXL split-checkpoint switch), and runs image/text workflows with automatic split-checkpoint retry |
-| `llm_client.py` | OpenAI-compatible LLM client: model listing, load/unload, reasoning-effort probing, cached model list, and autocomplete |
+| `llm_client.py` | OpenAI-compatible LLM client: model listing, load/unload, reasoning-effort probing, cached model list |
 | `config_loader.py` | Loads `config.yaml` (auto-generates it with defaults if missing) and backfills workflow model defaults |
 | `user_settings.py` | Per-user defaults (SQLite) |
 | `generation_store.py` | Persisted generation params per message (SQLite) |
@@ -158,6 +158,7 @@ Key modules:
 | `diag.py` | Standalone diagnostic: prints local vs. server-side slash commands for debugging sync issues |
 | `cogs/` | Slash commands: `generation.py` (/ideogram, /sdxl, /upscale, /img2img, /flush), `llm.py` (/gen_prompt, /llm_models), `settings.py` (/settings, /reset_settings), `admin.py` (/admin) |
 | `ui/views.py` | All interactive UI: generation buttons (Retry/Delete/Upscale/Edit), checkpoint picker, reasoning-effort picker, and admin panel views |
+| `ui/autocomplete.py` | Discord slash-command autocomplete handlers (LLM model, SDXL checkpoint, LoRA) |
 
 ## Setup
 
@@ -331,6 +332,7 @@ comfyuidiscord/
 |-- ui/
 |   |-- __init__.py         # Package marker
 |   `-- views.py            # All interactive UI (buttons, pickers, modals, admin panel)
+|   `-- autocomplete.py     # Discord slash-command autocomplete handlers
 `-- workflows/
     |-- t2i/
     |   |-- sdxl_t2i.json

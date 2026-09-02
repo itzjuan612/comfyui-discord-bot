@@ -694,7 +694,23 @@ class ThinkingView(View):
                 temperature=self.temperature,
                 reasoning_effort=effort,
             )
-            await msg.edit(content=result)
+            if len(result) > 2000:
+                # Discord's message limit is 2000 chars; oversized prompts
+                # are delivered as an attached .txt file instead.
+                txt_file = discord.File(
+                    io.BytesIO(result.encode("utf-8")), filename="prompt.txt"
+                )
+                await msg.edit(
+                    content=(
+                        "\u26a0\ufe0f The generated prompt is longer than Discord's "
+                        "2000-character limit, so it can't be shown directly. "
+                        "It has been saved to the attached .txt file — copy the "
+                        "text inside that file instead."
+                    ),
+                    attachments=[txt_file],
+                )
+            else:
+                await msg.edit(content=result)
         except Exception as exc:
             log.exception("gen_prompt failed")
             await reply_error(interaction, f"\u274c Prompt generation failed: {exc}", target=msg)

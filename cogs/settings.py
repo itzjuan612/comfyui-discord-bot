@@ -3,7 +3,7 @@ from discord import app_commands
 
 from bot import bot
 from core import user_settings, QUALITY_CHOICES, ASPECT_RATIO_CHOICES, SAMPLER_CHOICES, SCHEDULER_CHOICES
-from llm_client import _sdxl_model_autocomplete
+from ui.autocomplete import _sdxl_model_autocomplete
 
 
 @bot.tree.command(name="settings", description="View or set your personal generation defaults")
