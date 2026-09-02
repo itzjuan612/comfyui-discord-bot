@@ -332,6 +332,7 @@ comfyuidiscord/
 |-- ui/
 |   |-- __init__.py         # Package marker
 |   `-- views.py            # All interactive UI (buttons, pickers, modals, admin panel)
+|   `-- autocomplete.py     # Discord slash-command autocomplete handlers
 `-- workflows/
     |-- t2i/
     |   |-- sdxl_t2i.json
