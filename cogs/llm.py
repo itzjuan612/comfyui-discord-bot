@@ -3,7 +3,8 @@ from discord import app_commands
 
 from bot import bot
 from core import config, log, ban_guard, check_cooldown, nsfw_blocked, schedule_message_deletion, reply_error, ASPECT_RATIO_CHOICES
-from llm_client import fetch_llm_models, llm_model_load, probe_reasoning_efforts, llm_model_autocomplete
+from llm_client import fetch_llm_models, llm_model_load, probe_reasoning_efforts
+from ui.autocomplete import llm_model_autocomplete
 from ui.views import ThinkingView
 
 

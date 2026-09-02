@@ -17,7 +17,7 @@ from core import (
     SAMPLER_CHOICES, SCHEDULER_CHOICES, I2I_WORKFLOW_CHOICES,
     ComfyUIError,
 )
-from llm_client import _sdxl_model_autocomplete, _sdxl_lora_autocomplete
+from ui.autocomplete import _sdxl_model_autocomplete, _sdxl_lora_autocomplete
 from workflow import run_image
 from ui.views import GenerationView, CheckpointPickerView
 
