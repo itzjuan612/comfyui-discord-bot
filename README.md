@@ -260,7 +260,7 @@ comfyuidiscord/
 - The bot requires ComfyUI to be running before starting.
 - The `--allow-cors` flag is passed to `main.py` (it does not affect ComfyUI itself).
 - Images larger than 18 MB are automatically re-encoded as JPEG to stay under Discord's upload limit.
-- The NSFW image check uses **EraX-NSFW-V1.0** (a YOLO11 nano detector exported to ONNX) running entirely on CPU via ONNX Runtime, so it uses RAM rather than VRAM and does not contend with ComfyUI. The model ships in `models/erax_nsfw.onnx`; if it's missing, the bot auto-downloads and exports it on first boot (you can pick nano/small/medium, defaulting to nano).
+- The NSFW image check uses **EraX-NSFW-V1.0** (a YOLO11 nano detector exported to ONNX) running entirely on CPU via ONNX Runtime, so it uses RAM rather than VRAM and does not contend with ComfyUI. If the model is missing, the bot auto-downloads and exports it on first boot (you can pick nano/small/medium, defaulting to nano).
 - Persistent buttons (Retry, Delete, Upscale, Edit) survive bot restarts via a globally registered Discord View.
 - All HTTP and WebSocket traffic (ComfyUI API, LLM endpoint, Discord image downloads) goes through a single shared `aiohttp.ClientSession` (`http_session.py`) instead of creating a new session per request. This enables TCP Keep-Alive connection reuse, avoids repeated handshakes, and prevents file-descriptor exhaustion during concurrent generations. The session is created lazily (and recreated if the event loop changes) and closed once when the bot shuts down.
 - **LLM model caching:** The LLM model list is cached and refreshed every 300 seconds by a background loop. A failed refresh keeps the previous cache so slash-command autocomplete never breaks.
