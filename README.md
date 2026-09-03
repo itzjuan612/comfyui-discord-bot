@@ -229,23 +229,57 @@ git clone https://github.com/ltdrdata/was-node-suite-comfyui
 
 Place these in ComfyUI's `models/` directories:
 
+- Stable Diffusion XL
+
 | Model File | Location | Used By |
 | --- | --- | --- |
 | `SDXL.safetensors` | models/checkpoints/ | SDXL text-to-image & SDXL upscale (any SDXL checkpoint works) |
 | [qwen_3_06b_base.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/main/split_files/text_encoders/qwen_3_06b_base.safetensors) | models/clip/ | SDXL split-checkpoint text encoder (used when the checkpoint lacks a bundled CLIP) |
 | [qwen_image_vae.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/blob/main/split_files/vae/qwen_image_vae.safetensors) | models/vae/ | SDXL split-checkpoint VAE (used when the checkpoint lacks a bundled VAE) |
+
+- Ideogram
+
+| Model File | Location | Used By |
+| --- | --- | --- |
 | [ideogram4_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Ideogram-4/blob/main/diffusion_models/ideogram4_fp8_scaled.safetensors) | models/unet/ (or models/diffusion_models/) | Ideogram 4 text-to-image |
 | [ideogram4_unconditional_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Ideogram-4/blob/main/diffusion_models/ideogram4_unconditional_fp8_scaled.safetensors) | models/unet/ | Ideogram 4 (unconditional branch) |
 | [flux2-vae.safetensors](https://huggingface.co/Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors) | models/vae/ | Ideogram 4 VAE |
 | [qwen3vl_8b_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Ideogram-4/blob/main/text_encoders/qwen3vl_8b_fp8_scaled.safetensors) | models/text_encoders/ | Ideogram 4 CLIP |
+
+- Z-Image Turbo & Base - Image Generation
+> You only need to download one of these diffusion models, along with the VAE. NVFP4 is the lightest and fastest, while BF16 has the best quality.
+
+| Model File | Location | Used By |
+| --- | --- | --- |
+| [z_image_turbo_bf16.safetensors](https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors) | models/diffusion_models | Z-Image **Turbo** BF16 (12.3 GB)
+| [z_image_bf16.safetensors](https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors) | models/diffusion_models | Z-Image **Base** BF16 (12.3 GB)
+| [z_image_turbo_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors) | models/diffusion_models | Z-Image **Turbo** INT8 (6.2 GB)
+| [z_image_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/z_image/blob/main/split_files/diffusion_models/z_image_int8_convrot.safetensors) | models/diffusion_models | Z-Image **Base** INT8 (6.2 GB)
+| [z_image_turbo_nvfp4.safetensors](https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/diffusion_models/z_image_turbo_nvfp4.safetensors) | models/diffusion_models | Z-Image **Turbo** NVFP4 (4.51 GB)
+| [ae.safetensors](https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors) | models/vae | Z-Image VAE
+
+- Flux.2 Klein Image Edit
+
+| Model File | Location | Used By |
+| --- | --- | --- |
 | [flux-2-klein-base-4b-fp8.safetensors](https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/blob/main/flux-2-klein-base-4b-fp8.safetensors) | models/diffusion_models/ | Flux 2 Klein 4B img2img |
 | [full_encoder_small_decoder.safetensors](https://huggingface.co/black-forest-labs/FLUX.2-small-decoder/blob/main/full_encoder_small_decoder.safetensors) | models/vae/ | Flux 2 Klein VAE |
-| [qwen_3_4b.safetensors](https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/text_encoders/qwen_3_4b.safetensors) | models/text_encoders/ | Flux 2 Klein CLIP |
+
+- Z-Image and Flux.2 Klein Text Encoder
+> Both models use the same text encoder.
+
+| Model File | Location | Used By |
+| --- | --- | --- |
+| [qwen_3_4b.safetensors](https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/text_encoders/qwen_3_4b.safetensors) | models/text_encoders/ | Z-Image and Flux.2 Klein Text Encoder |
+
+- Upscalers
+> SeedVR2 and FlashVSR nodes can auto-download their weights on first use.
+
+| Model File | Location | Used By |
+| --- | --- | --- |
 | `seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors` | models/SEEDVR2 (auto-downloaded by node) | SeedVR2 upscale |
 | `ema_vae_fp16.safetensors` | models/SEEDVR2 (auto-downloaded by node) | SeedVR2 VAE |
 | `FlashVSR-v1.1` | auto-downloaded by the FlashVSR node | FlashVSR upscale |
-
-Note: SeedVR2 and FlashVSR nodes can auto-download their weights on first use. The other models must be placed manually.
 
 ### 6. Start the Bot
 
