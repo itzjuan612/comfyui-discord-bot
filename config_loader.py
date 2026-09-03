@@ -156,7 +156,7 @@ models:
   flux2_klein:
     i2i_single:
       file: workflows/i2i/image_flux2_klein_image_edit_4b_base.json
-      default_model: "flux-2-klein-base-4b-fp8.safetensors"
+      default_model: "flux-2-klein-4b-fp8.safetensors"
       prompt_node: "75:74"
       negative_node: "75:67"
       seed_node: "75:73"
@@ -168,7 +168,7 @@ models:
       megapixels_nodes: ["75:80"]
     i2i_multi:
       file: workflows/i2i/image_flux2_klein_multi_image_edit_4b_base.json
-      default_model: "flux-2-klein-base-4b-fp8.safetensors"
+      default_model: "flux-2-klein-4b-fp8.safetensors"
       prompt_node: "92:113"
       negative_node: "92:87"
       seed_node: "92:105"
