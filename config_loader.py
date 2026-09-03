@@ -126,6 +126,32 @@ models:
       # Quality preset (Turbo/Default/Quality) via the CustomCombo node.
       quality_node: "98:156"
       quality_key: choice
+  zimage:
+    t2i:
+      # Node IDs in this workflow are prefixed "57:" (from ComfyUI's graph
+      # export), so they must be quoted as strings in YAML.
+      file: workflows/t2i/z_image.json
+      default_model: "z_image_turbo_int8_convrot.safetensors"
+      prompt_node: "57:27"
+      negative_node: "57:65"
+      seed_node: "57:3"
+      seed_key: seed
+      steps_node: "57:3"
+      cfg_node: "57:3"
+      sampler_node: "57:3"
+      latent_node: "57:13"
+      # Two LoRA loaders in the model-only chain (UNETLoader -> 57:63 -> 57:64
+      # -> ModelSamplingAuraFlow -> KSampler). lora1 is the one closer to the
+      # UNet loader, lora2 the one closer to the sampler, so the chain order is
+      # preserved when reconnected.
+      lora1_node: "57:63"
+      lora2_node: "57:64"
+      # Unified LoRA strength via the PrimitiveFloat node (drives both loaders).
+      lora_strength_node: "57:67"
+      # Model chain endpoints for LoRA reconnection (start = UNet loader,
+      # end = ModelSamplingAuraFlow which feeds the KSampler).
+      model_chain_start: "57:28"
+      model_chain_end: "57:11"  
   flux2_klein:
     i2i_single:
       file: workflows/i2i/image_flux2_klein_image_edit_4b_base.json

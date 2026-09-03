@@ -62,3 +62,22 @@ async def _sdxl_lora_autocomplete(interaction: discord.Interaction, current_inpu
         matches = loras
     # Discord allows at most 25 autocomplete choices.
     return [app_commands.Choice(name=l, value=l) for l in matches[:25]]
+
+
+async def _zimage_model_autocomplete(interaction: discord.Interaction, current_input: str):
+    """Dynamic autocomplete for /zimage's ``model`` parameter.
+
+    Suggests diffusion models from ComfyUI's models/diffusion_models folder,
+    filtered by what the user has typed so far.
+    """
+    try:
+        models = await comfy.fetch_diffusion_models()
+    except Exception as exc:
+        log.warning("Could not fetch diffusion model list for autocomplete: %s", exc)
+        return []
+    if current_input:
+        matches = [m for m in models if current_input.lower() in m.lower()]
+    else:
+        matches = models
+    # Discord allows at most 25 autocomplete choices.
+    return [app_commands.Choice(name=m, value=m) for m in matches[:25]]
