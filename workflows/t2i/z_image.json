@@ -1,0 +1,184 @@
+{
+  "9": {
+    "inputs": {
+      "filename_prefix": "z-image-turbo",
+      "images": [
+        "57:8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Guardar Imagen"
+    }
+  },
+  "57:29": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Cargar VAE"
+    }
+  },
+  "57:8": {
+    "inputs": {
+      "samples": [
+        "57:3",
+        0
+      ],
+      "vae": [
+        "57:29",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Decodificación VAE"
+    }
+  },
+  "57:28": {
+    "inputs": {
+      "unet_name": "z_image_turbo_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Cargar Modelo de Difusión"
+    }
+  },
+  "57:11": {
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "57:64",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "ModelSamplingAuraFlow"
+    }
+  },
+  "57:30": {
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Cargar CLIP"
+    }
+  },
+  "57:27": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "57:30",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive Prompt"
+    }
+  },
+  "57:65": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "57:30",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative Prompt"
+    }
+  },
+  "57:64": {
+    "inputs": {
+      "lora_name": "",
+      "strength_model": [
+        "57:67",
+        0
+      ],
+      "model": [
+        "57:63",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "CargadorLoRAModeloSolo"
+    }
+  },
+  "57:63": {
+    "inputs": {
+      "lora_name": "",
+      "strength_model": [
+        "57:67",
+        0
+      ],
+      "model": [
+        "57:28",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "CargadorLoRAModeloSolo"
+    }
+  },
+  "57:67": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "LoRA Strength"
+    }
+  },
+  "57:3": {
+    "inputs": {
+      "seed": 45654654645,
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "res_multistep",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "57:11",
+        0
+      ],
+      "positive": [
+        "57:27",
+        0
+      ],
+      "negative": [
+        "57:65",
+        0
+      ],
+      "latent_image": [
+        "57:13",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "57:13": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "EmptySD3LatentImage"
+    }
+  }
+}

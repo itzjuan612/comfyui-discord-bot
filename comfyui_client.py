@@ -187,6 +187,27 @@ class ComfyUIClient:
         items = data.get("loras") if isinstance(data, dict) else data
         return [item for item in items if isinstance(item, str)]
 
+    async def fetch_diffusion_models(self) -> list[str]:
+        """List model files available in ComfyUI's models/diffusion_models folder.
+
+        Unlike checkpoints, diffusion models (UNet/DiT files such as the
+        Z-Image turbo model) live in their own folder, so a dedicated fetcher
+        is needed for autocomplete and availability checks.
+        """
+        session = get_session()
+        async with session.get(f"{self.base_url}/models/diffusion_models") as resp:
+            if resp.status != 200:
+                raise ComfyUIError(f"Could not list diffusion models (HTTP {resp.status})")
+            data = await resp.json()
+        items = data.get("diffusion_models") if isinstance(data, dict) else data
+        names = []
+        for item in items:
+            if isinstance(item, str):
+                names.append(item)
+            elif isinstance(item, dict) and "name" in item:
+                names.append(item["name"])
+        return names
+
     async def fetch_checkpoints(self, force: bool = False) -> list[str]:
         """List checkpoint files available in ComfyUI's models/checkpoints folder.
 

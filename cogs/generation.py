@@ -17,7 +17,7 @@ from core import (
     SAMPLER_CHOICES, SCHEDULER_CHOICES, I2I_WORKFLOW_CHOICES,
     ComfyUIError,
 )
-from ui.autocomplete import _sdxl_model_autocomplete, _sdxl_lora_autocomplete
+from ui.autocomplete import _sdxl_model_autocomplete, _sdxl_lora_autocomplete, _zimage_model_autocomplete
 from workflow import run_image
 from ui.views import GenerationView, CheckpointPickerView
 
@@ -268,6 +268,112 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
         "lora_strength": lora_strength,
     }
     await run_t2i_generation(interaction, "sdxl", prompt, stealth, gen_kwargs)
+
+
+@bot.tree.command(name="zimage", description="Generate an image with Z-Image")
+@app_commands.autocomplete(model=_zimage_model_autocomplete)
+@app_commands.choices(sampler=SAMPLER_CHOICES)
+@app_commands.choices(scheduler=SCHEDULER_CHOICES)
+@app_commands.autocomplete(lora1=_sdxl_lora_autocomplete)
+@app_commands.autocomplete(lora2=_sdxl_lora_autocomplete)
+@app_commands.describe(prompt="Text prompt")
+@app_commands.describe(model="Diffusion model in models/diffusion_models (optional)")
+@app_commands.describe(negative="Negative prompt")
+@app_commands.describe(steps="Sampling steps")
+@app_commands.describe(cfg="CFG guidance scale")
+@app_commands.describe(width="Width in pixels")
+@app_commands.describe(height="Height in pixels")
+@app_commands.describe(sampler="Sampler (optional)")
+@app_commands.describe(scheduler="Scheduler (optional)")
+@app_commands.describe(lora1="First LoRA (optional)")
+@app_commands.describe(lora2="Second LoRA (optional)")
+@app_commands.describe(lora_strength="LoRA strength (optional, default 1.0)")
+@app_commands.describe(seed="Seed (optional)")
+@app_commands.describe(batch_size="Number of images to generate (optional)")
+@app_commands.describe(stealth="Ephemeral output, visible only to you")
+async def zimage(interaction: discord.Interaction, prompt: str,
+                 model: str | None = None,
+                 negative: str | None = None,
+                 steps: int | None = None,
+                 cfg: float | None = None,
+                 width: int | None = None,
+                 height: int | None = None,
+                 sampler: str | None = None,
+                 scheduler: str | None = None,
+                 lora1: str | None = None,
+                 lora2: str | None = None,
+                 lora_strength: float | None = None,
+                 seed: int | None = None,
+                 batch_size: int | None = None,
+                 stealth: bool | None = None):
+    if stealth is None:
+        stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
+    if moderation.is_banned(interaction.user.id):
+        await interaction.response.send_message(
+            content="\U0001f6ab You are banned from using this bot. Please contact an admin.", ephemeral=True
+        )
+        return
+    if not await check_cooldown(interaction):
+        await interaction.response.send_message(
+            content="\u23f3 Please wait before requesting another image.", ephemeral=True
+        )
+        return
+
+    if nsfw_blocked(interaction, prompt):
+        await interaction.response.send_message(
+            content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+        )
+        msg = await interaction.original_response()
+        schedule_message_deletion(msg)
+        return
+
+    settings = user_settings.get_settings(interaction.user.id)
+    if negative is None:
+        negative = settings["negative_prompt"] or None
+    if steps is None:
+        steps = settings["steps"]
+    if cfg is None:
+        cfg = settings["cfg"]
+
+    # Optional diffusion model selection: any file in ComfyUI's
+    # models/diffusion_models folder can be used instead of the workflow's
+    # default model.
+    if model is not None:
+        try:
+            available = await comfy.fetch_diffusion_models()
+        except Exception as exc:
+            log.warning("Could not list diffusion models: %s", exc)
+            await interaction.response.send_message(
+                content=f"\u274c Could not query ComfyUI for available diffusion models: {exc}",
+                ephemeral=True,
+            )
+            return
+        if model not in available:
+            await interaction.response.send_message(
+                content=f"\u274c Model \u201c{model}\u201d was not found in models/diffusion_models.",
+                ephemeral=True,
+            )
+            return
+
+    gen_kwargs = {
+        "prompt": prompt,
+        "negative": negative,
+        "seed": seed,
+        "steps": steps,
+        "cfg": cfg,
+        "width": width,
+        "height": height,
+        "sampler": sampler,
+        "scheduler": scheduler,
+        "batch_size": batch_size,
+        "ckpt_name": model,
+        "lora1": lora1,
+        "lora2": lora2,
+        "lora_strength": lora_strength,
+    }
+    await run_t2i_generation(interaction, "zimage", prompt, stealth, gen_kwargs)
+
+
 @bot.tree.command(name="upscale", description="Upscale an image from your gallery")
 @app_commands.choices(model=UPSCALE_CHOICES)
 @app_commands.describe(image="Image to upscale (attach from your gallery)")

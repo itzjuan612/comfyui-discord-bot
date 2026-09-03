@@ -123,47 +123,84 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     if scheduler is not None:
         set_node(spec.get("sampler_node"), "scheduler", scheduler)
 
+    # Batch size: applied to the empty latent node when provided.
+    batch_size = kwargs.get("batch_size")
+    if batch_size is not None:
+        latent_id = spec.get("latent_node")
+        if latent_id is not None:
+            workflow[str(latent_id)]["inputs"]["batch_size"] = int(batch_size)
+
     # LoRA support: an empty lora name disables the loader node. Since
     # ComfyUI validates lora_name against the available-loras list ("" is
     # not a valid value), disabled loaders are removed from the graph and
-    # the model/clip chain is rewired around them. One strength value is
-    # applied to both the model and clip branches of every active loader.
+    # the model/clip chain is rewired around them.
     lora1 = kwargs.get("lora1")
     lora2 = kwargs.get("lora2")
     lora_strength = kwargs.get("lora_strength")
-    strength_val = float(lora_strength) if lora_strength is not None else None
-    active = []
-    for lora_name, lora_node in ((lora1, spec.get("lora1_node")), (lora2, spec.get("lora2_node"))):
-        if lora_node is None:
-            continue
-        nid = str(lora_node)
-        if lora_name:
-            node = workflow[nid]
-            node["inputs"]["lora_name"] = lora_name
-            if strength_val is not None:
-                node["inputs"]["strength_model"] = strength_val
-                node["inputs"]["strength_clip"] = strength_val
-            active.append(nid)
-        else:
-            workflow.pop(nid)  # disabled: remove so it is not validated
-    if active or spec.get("lora1_node") is not None or spec.get("lora2_node") is not None:
-        # Rebuild the chain: checkpoint (model) / CLIP switch (clip) ->
-        # active LoRA loaders -> sampler (model) and text encoders (clip).
-        ckpt_nid = next((str(k) for k, v in workflow.items()
-                         if v["class_type"] == "CheckpointLoaderSimple"), None)
-        clip_nid = next((str(k) for k, v in workflow.items()
-                         if v["class_type"] == "CLIP Input Switch"), None)
-        model_src, clip_src = ckpt_nid, clip_nid
-        for nid in active:
-            # Clip output index: 0 from the CLIP switch, 1 from a LoraLoader.
-            workflow[nid]["inputs"]["model"] = [model_src, 0]
-            workflow[nid]["inputs"]["clip"] = [clip_src, 0 if clip_src == clip_nid else 1]
-            model_src, clip_src = nid, nid
-        clip_out = 1 if active else 0
-        sampler_nid = str(spec.get("steps_node"))
-        workflow[sampler_nid]["inputs"]["model"] = [model_src, 0]
-        for nid in (spec.get("prompt_node"), spec.get("negative_node")):
-            workflow[str(nid)]["inputs"]["clip"] = [clip_src, clip_out]
+
+    if spec.get("lora_strength_node") is not None:
+        # Unified LoRA strength (e.g. Z-Image): a single PrimitiveFloat node
+        # drives the strength of every LoRA loader via its strength_model
+        # link. Set that node's value once; disabled loaders are removed and
+        # the model-only chain is rewired around the active loaders.
+        lora_strength_node = str(spec["lora_strength_node"])
+        # Apply the unified strength only when the user provides it; otherwise
+        # leave the workflow's PrimitiveFloat default value untouched.
+        if lora_strength is not None:
+            workflow[lora_strength_node]["inputs"]["value"] = float(lora_strength)
+        active_nodes = []
+        for lora_name, lora_node in ((lora1, spec.get("lora1_node")), (lora2, spec.get("lora2_node"))):
+            if lora_node is None:
+                continue
+            nid = str(lora_node)
+            if lora_name:
+                workflow[nid]["inputs"]["lora_name"] = lora_name
+                active_nodes.append(nid)
+            else:
+                workflow.pop(nid)  # disabled: remove so it is not validated
+        chain_start = spec.get("model_chain_start")
+        chain_end = spec.get("model_chain_end")
+        if chain_start is not None and chain_end is not None:
+            # Reconnect the model chain: source -> active LoRAs (in order) -> target.
+            prev = str(chain_start)
+            for nid in active_nodes:
+                workflow[nid]["inputs"]["model"] = [prev, 0]
+                prev = nid
+            workflow[str(chain_end)]["inputs"]["model"] = [prev, 0]
+    else:
+        strength_val = float(lora_strength) if lora_strength is not None else None
+        active = []
+        for lora_name, lora_node in ((lora1, spec.get("lora1_node")), (lora2, spec.get("lora2_node"))):
+            if lora_node is None:
+                continue
+            nid = str(lora_node)
+            if lora_name:
+                node = workflow[nid]
+                node["inputs"]["lora_name"] = lora_name
+                if strength_val is not None:
+                    node["inputs"]["strength_model"] = strength_val
+                    node["inputs"]["strength_clip"] = strength_val
+                active.append(nid)
+            else:
+                workflow.pop(nid)  # disabled: remove so it is not validated
+        if active or spec.get("lora1_node") is not None or spec.get("lora2_node") is not None:
+            # Rebuild the chain: checkpoint (model) / CLIP switch (clip) ->
+            # active LoRA loaders -> sampler (model) and text encoders (clip).
+            ckpt_nid = next((str(k) for k, v in workflow.items()
+                              if v["class_type"] == "CheckpointLoaderSimple"), None)
+            clip_nid = next((str(k) for k, v in workflow.items()
+                              if v["class_type"] == "CLIP Input Switch"), None)
+            model_src, clip_src = ckpt_nid, clip_nid
+            for nid in active:
+                # Clip output index: 0 from the CLIP switch, 1 from a LoraLoader.
+                workflow[nid]["inputs"]["model"] = [model_src, 0]
+                workflow[nid]["inputs"]["clip"] = [clip_src, 0 if clip_src == clip_nid else 1]
+                model_src, clip_src = nid, nid
+            clip_out = 1 if active else 0
+            sampler_nid = str(spec.get("steps_node"))
+            workflow[sampler_nid]["inputs"]["model"] = [model_src, 0]
+            for nid in (spec.get("prompt_node"), spec.get("negative_node")):
+                workflow[str(nid)]["inputs"]["clip"] = [clip_src, clip_out]
 
     # Ideogram: resolution selector (megapixels + aspect ratio) and quality preset.
     megapixels = kwargs.get("megapixels")
