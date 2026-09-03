@@ -7,7 +7,6 @@ from ui.autocomplete import _sdxl_model_autocomplete, _zimage_model_autocomplete
 
 
 @bot.tree.command(name="settings", description="View or set your personal generation defaults")
-@app_commands.describe(positive_prompt="Default positive prompt")
 @app_commands.describe(negative_prompt="Default negative prompt")
 @app_commands.describe(sdxl_checkpoint="Default SDXL checkpoint (models/checkpoints), used by /sdxl and /upscale (SDXL)")
 @app_commands.describe(zimage_model="Default Z-Image diffusion model (models/diffusion_models), used by /zimage")
@@ -40,7 +39,6 @@ from ui.autocomplete import _sdxl_model_autocomplete, _zimage_model_autocomplete
 @app_commands.autocomplete(zimage_model=_zimage_model_autocomplete)
 @app_commands.describe(view="Set to true to only view your current settings")
 async def settings(interaction: discord.Interaction,
-                    positive_prompt: str | None = None,
                     negative_prompt: str | None = None,
                     sdxl_checkpoint: str | None = None,
                     zimage_model: str | None = None,
@@ -67,8 +65,7 @@ async def settings(interaction: discord.Interaction,
     await interaction.response.defer(ephemeral=True)
 
     if view or not (
-        positive_prompt or negative_prompt
-        or sdxl_checkpoint is not None or zimage_model is not None
+        negative_prompt or sdxl_checkpoint is not None or zimage_model is not None
         or width is not None or height is not None
         or sdxl_steps is not None or sdxl_cfg is not None
         or zimage_steps is not None or zimage_cfg is not None
@@ -89,7 +86,6 @@ async def settings(interaction: discord.Interaction,
 
     updates = {
         k: v for k, v in {
-            "positive_prompt": positive_prompt,
             "negative_prompt": negative_prompt,
             "sdxl_checkpoint": sdxl_checkpoint,
             "zimage_model": zimage_model,

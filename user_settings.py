@@ -11,7 +11,6 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_setting
 # Whitelisted column names. Never build SQL from raw user input.
 # Order mirrors the canonical /settings display order.
 SETTINGS_FIELDS = (
-    "positive_prompt",
     "negative_prompt",
     "sdxl_checkpoint",
     "zimage_model",
@@ -99,7 +98,6 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS user_settings (
                 discord_id INTEGER PRIMARY KEY,
-                positive_prompt TEXT NOT NULL DEFAULT '',
                 negative_prompt TEXT NOT NULL DEFAULT '',
                 cfg REAL,
                 steps INTEGER
@@ -163,7 +161,7 @@ def get_settings(discord_id: int) -> dict:
     """Return a user's stored defaults."""
     with _locked_conn() as conn:
         row = conn.execute(
-            "SELECT positive_prompt, negative_prompt, sdxl_checkpoint, zimage_model, "
+            "SELECT negative_prompt, sdxl_checkpoint, zimage_model, "
             "width, height, sdxl_steps, sdxl_cfg, zimage_steps, zimage_cfg, "
             "sdxl_sampler, sdxl_scheduler, zimage_sampler, zimage_scheduler, "
             "ideogram_quality, ideogram_megapixels, ideogram_aspect_ratio, "
@@ -173,7 +171,7 @@ def get_settings(discord_id: int) -> dict:
         ).fetchone()
     if row is None:
         return {
-            "positive_prompt": "", "negative_prompt": "",
+            "negative_prompt": "",
             "sdxl_checkpoint": None, "zimage_model": None,
             "width": None, "height": None,
             "sdxl_steps": None, "sdxl_cfg": None,
@@ -212,7 +210,7 @@ def reset_settings(discord_id: int) -> dict:
     with _locked_conn() as conn:
         conn.execute(
             "UPDATE user_settings "
-            "SET positive_prompt = '', negative_prompt = '', "
+            "SET negative_prompt = '', "
             "sdxl_checkpoint = NULL, zimage_model = NULL, width = NULL, height = NULL, "
             "sdxl_steps = NULL, sdxl_cfg = NULL, zimage_steps = NULL, zimage_cfg = NULL, "
             "sdxl_sampler = NULL, sdxl_scheduler = NULL, "
@@ -234,7 +232,6 @@ def format_settings(s: dict) -> str:
     stealth_default = "yes" if s.get("stealth") else "no"
     bullet = "\u2022"
     return (
-        f"{bullet} Positive prompt: {fmt(s.get('positive_prompt'))}\n"
         f"{bullet} Negative prompt: {fmt(s.get('negative_prompt'))}\n"
         f"{bullet} SDXL checkpoint: {fmt(s.get('sdxl_checkpoint'))}\n"
         f"{bullet} Z-Image model: {fmt(s.get('zimage_model'))}\n"
