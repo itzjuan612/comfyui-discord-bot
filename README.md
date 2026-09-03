@@ -40,28 +40,42 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | `aspect_ratio` | Aspect ratio preset |
 | `stealth` | Ephemeral output |
 
-### `/sdxl`
+### `/sdxl` and `/zimage`
 
 | Parameter | Description |
 | --- | --- |
 | `prompt` | Text prompt (required) |
-| `model` | Checkpoint filename in ComfyUI's `models/checkpoints` folder (optional; defaults to the workflow's checkpoint) |
+| `model` | Model filename, SDXL is located in `models/checkpoints` while Z-Image is in `models/diffusion_models` |
 | `negative` | Negative prompt |
 | `steps` | Sampling steps |
 | `width` / `height` | Dimensions, multiple of 64 |
 | `sampler` / `scheduler` | Sampler and scheduler (user or workflow default if none is chosen) |
 | `cfg` | Guidance scale |
-| `lora1` | First LoRA name (optional; dynamic autocomplete from `models/loras`) |
-| `lora2` | Second LoRA name (optional; dynamic autocomplete from `models/loras`) |
+| `lora1` / `lora2` | First and Second LoRA name (optional; dynamic autocomplete from `models/loras`) |
 | `seed` | Seed (optional) |
 | `lora_strength` | Unified LoRA strength applied to both LoRAs (optional, default 1.0) |
 | `stealth` | Ephemeral output |
+| `batch_size` | **`/zimage` only**, determines the number of images the model will generate at once |
 
 > **Any checkpoint:** Pass any file name present in ComfyUI's `models/checkpoints` folder via `model` to generate with a different checkpoint instead of the workflow's default. The bot verifies the file exists before running the workflow, and the embed reports the checkpoint actually used. Switching to a different checkpoint frees ComfyUI memory; reusing the same checkpoint does not. If the workflow's default checkpoint (e.g. `SDXL.safetensors`) is missing from `models/checkpoints`, the bot automatically falls back to an available checkpoint (preferring one whose name contains "sdxl") and the embed reports the checkpoint actually used. The `model` parameter uses dynamic autocomplete: as you type, the bot filters the live checkpoint list (cached for 60 seconds), so newly added checkpoint files appear without a bot restart or slash-command re-sync.
 
 > **LoRAs:** `lora1` and `lora2` accept any file in ComfyUI's `models/loras` folder (with dynamic autocomplete). Leaving a slot empty disables that LoRA loader; selecting a file enables it. A single `lora_strength` value is applied to both the model and clip branches of every active LoRA.
 
 > **Split checkpoints:** Some checkpoints do not ship with their own text encoder and VAE. The SDXL workflow contains a `PrimitiveBoolean` switch driving WAS-node-suite `CLIP Input Switch` and `VAE Input Switch` nodes: when `False` it uses the checkpoint's bundled CLIP/VAE, when `True` it uses the separate `qwen_3_06b_base` CLIP and `qwen_image_vae` VAE. The bot detects a split checkpoint automatically: if generation fails because the checkpoint has no valid bundled CLIP, it flips the switch to `True` and retries. Each newly detected split checkpoint is cached (in memory and persisted in `user_settings.db`), so subsequent generations for that checkpoint use the separate loaders directly without an error/retry round trip.
+
+### `/img2img`
+
+| Parameter | Description |
+| --- | --- |
+| `workflow` | `single` (1 image edit) or `multi` (2 images combine) |
+| `image` | First input image |
+| `prompt` | Description of the desired edit |
+| `image2` | Second input image (required for multi) |
+| `cfg` | CFG (optional) |
+| `steps` | Steps (optional) |
+| `sampler` | Sampler name (optional) |
+| `megapixels` | Target MP (optional) |
+| `stealth` | Ephemeral output |
 
 ### `/gen_prompt`
 
@@ -90,26 +104,13 @@ After selecting the reasoning effort, the bot composes the prompt via the Ideogr
 
 > **SDXL checkpoint picker:** Choosing `sdxl` uploads your image, then shows an ephemeral picker listing every checkpoint in ComfyUI's `models/checkpoints` folder (plus a Default option that uses the workflow's own checkpoint). Selecting a checkpoint runs the SDXL upscale workflow with that checkpoint; the embed reports the checkpoint actually used. Switching to a different checkpoint frees ComfyUI memory; reusing the same one does not.
 
-### `/img2img`
-
-| Parameter | Description |
-| --- | --- |
-| `workflow` | `single` (1 image edit) or `multi` (2 images combine) |
-| `image` | First input image |
-| `prompt` | Description of the desired edit |
-| `image2` | Second input image (required for multi) |
-| `cfg` | CFG (optional) |
-| `steps` | Steps (optional) |
-| `sampler` | Sampler name (optional) |
-| `megapixels` | Target MP (optional) |
-| `stealth` | Ephemeral output |
-
 ### `/settings` / `/reset_settings`
 
 View or update per-user defaults:
 
-- `positive_prompt`, `negative_prompt`
-- `sdxl_checkpoint`, `cfg`, `steps`, `sdxl_sampler`, `sdxl_scheduler` (SDXL)
+- `negative_prompt`, `width`, `height`
+- `sdxl_checkpoint`, `sdxl_cfg`, `sdxl_steps`, `sdxl_sampler`, `sdxl_scheduler` (SDXL)
+- `zimage_model`, `zimage_cfg`, `zimage_steps`, `zimage_sampler`, `zimage_scheduler` (Z-Image)
 - `ideogram_quality`, `ideogram_megapixels`, `ideogram_aspect_ratio` (Ideogram)
 - `img2img_cfg`, `img2img_steps`, `img2img_sampler`, `img2img_megapixels` (img2img Flux.2 Klein)
 - `stealth` (default privacy)
@@ -155,8 +156,9 @@ Key modules:
 | `generation_store.py` | Persisted generation params per message (SQLite) |
 | `moderation.py` | Admin/ban lists (SQLite) |
 | `nsfw_guard.py` | Keyword NSFW filter + EraX-NSFW-V1.0 CPU ONNX image detector |
+| `download_erax.py` | Downloads EraX-NSFW-V1.0 detector on boot if it's missing |
 | `diag.py` | Standalone diagnostic: prints local vs. server-side slash commands for debugging sync issues |
-| `cogs/` | Slash commands: `generation.py` (/ideogram, /sdxl, /upscale, /img2img, /flush), `llm.py` (/gen_prompt, /llm_models), `settings.py` (/settings, /reset_settings), `admin.py` (/admin) |
+| `cogs/` | Slash commands: `generation.py` (/ideogram, /sdxl, /zimage, /upscale, /img2img, /flush), `llm.py` (/gen_prompt, /llm_models), `settings.py` (/settings, /reset_settings), `admin.py` (/admin) |
 | `ui/views.py` | All interactive UI: generation buttons (Retry/Delete/Upscale/Edit), checkpoint picker, reasoning-effort picker, and admin panel views |
 | `ui/autocomplete.py` | Discord slash-command autocomplete handlers (LLM model, SDXL checkpoint, LoRA) |
 
@@ -372,7 +374,8 @@ comfyuidiscord/
 `-- workflows/
     |-- t2i/
     |   |-- sdxl_t2i.json
-    |   `-- Ideogram_4_generator.json
+    |   |-- Ideogram_4_generator.json
+    |   `-- z_image.json
     |-- i2i/
     |   |-- image_flux2_klein_image_edit_4b_base.json
     |   `-- image_flux2_klein_multi_image_edit_4b_base.json
