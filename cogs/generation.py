@@ -209,9 +209,13 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
     if negative is None:
         negative = settings["negative_prompt"] or None
     if steps is None:
-        steps = settings["steps"]
+        steps = settings.get("sdxl_steps")
     if cfg is None:
-        cfg = settings["cfg"]
+        cfg = settings.get("sdxl_cfg")
+    if width is None:
+        width = settings.get("width")
+    if height is None:
+        height = settings.get("height")
     if sampler is None:
         sampler = settings.get("sdxl_sampler")
     if scheduler is None:
@@ -331,9 +335,34 @@ async def zimage(interaction: discord.Interaction, prompt: str,
     if negative is None:
         negative = settings["negative_prompt"] or None
     if steps is None:
-        steps = settings["steps"]
+        steps = settings.get("zimage_steps")
     if cfg is None:
-        cfg = settings["cfg"]
+        cfg = settings.get("zimage_cfg")
+    if width is None:
+        width = settings.get("width")
+    if height is None:
+        height = settings.get("height")
+    if sampler is None:
+        sampler = settings.get("zimage_sampler")
+    if scheduler is None:
+        scheduler = settings.get("zimage_scheduler")
+
+    # Per-user default Z-Image diffusion model (set via /settings). Used only
+    # by /zimage when no explicit model is passed; silently ignored if
+    # unavailable.
+    if model is None:
+        saved = settings.get("zimage_model")
+        if saved:
+            try:
+                available = await comfy.fetch_diffusion_models()
+            except Exception as exc:
+                log.warning("Could not list diffusion models: %s", exc)
+                available = None
+            if available is not None:
+                if saved in available:
+                    model = saved
+                else:
+                    log.info("Saved Z-Image model %r not available; using workflow default.", saved)
 
     # Optional diffusion model selection: any file in ComfyUI's
     # models/diffusion_models folder can be used instead of the workflow's

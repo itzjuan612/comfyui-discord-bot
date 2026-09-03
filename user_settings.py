@@ -9,11 +9,22 @@ log = logging.getLogger("user_settings")
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_settings.db")
 
 # Whitelisted column names. Never build SQL from raw user input.
+# Order mirrors the canonical /settings display order.
 SETTINGS_FIELDS = (
     "positive_prompt",
     "negative_prompt",
-    "cfg",
-    "steps",
+    "sdxl_checkpoint",
+    "zimage_model",
+    "width",
+    "height",
+    "sdxl_steps",
+    "sdxl_cfg",
+    "zimage_steps",
+    "zimage_cfg",
+    "sdxl_sampler",
+    "sdxl_scheduler",
+    "zimage_sampler",
+    "zimage_scheduler",
     "ideogram_quality",
     "ideogram_megapixels",
     "ideogram_aspect_ratio",
@@ -22,9 +33,6 @@ SETTINGS_FIELDS = (
     "img2img_sampler",
     "img2img_megapixels",
     "stealth",
-    "sdxl_checkpoint",
-    "sdxl_sampler",
-    "sdxl_scheduler",
 )
 
 # Columns added after the original schema; applied via ALTER TABLE on upgrade.
@@ -40,6 +48,13 @@ MIGRATED_COLUMNS = {
     "sdxl_checkpoint": "TEXT",
     "sdxl_sampler": "TEXT",
     "sdxl_scheduler": "TEXT",
+    "zimage_model": "TEXT",
+    "width": "INTEGER",
+    "height": "INTEGER",
+    "zimage_steps": "INTEGER",
+    "zimage_cfg": "REAL",
+    "zimage_sampler": "TEXT",
+    "zimage_scheduler": "TEXT",
 }
 
 
@@ -92,6 +107,16 @@ def init_db() -> None:
             """
         )
         existing = {row[1] for row in conn.execute("PRAGMA table_info(user_settings)")}
+        # One-time migration: the legacy cfg/steps columns represent SDXL
+        # defaults; rename them to sdxl_cfg/sdxl_steps to preserve stored values.
+        for old, new in (("cfg", "sdxl_cfg"), ("steps", "sdxl_steps")):
+            if old in existing and new not in existing:
+                try:
+                    conn.execute(f"ALTER TABLE user_settings RENAME COLUMN {old} TO {new}")
+                    existing.discard(old)
+                    existing.add(new)
+                except sqlite3.OperationalError:
+                    pass
         for col, sql_type in MIGRATED_COLUMNS.items():
             if col not in existing:
                 conn.execute(f"ALTER TABLE user_settings ADD COLUMN {col} {sql_type}")
@@ -138,23 +163,28 @@ def get_settings(discord_id: int) -> dict:
     """Return a user's stored defaults."""
     with _locked_conn() as conn:
         row = conn.execute(
-            "SELECT positive_prompt, negative_prompt, cfg, steps, "
+            "SELECT positive_prompt, negative_prompt, sdxl_checkpoint, zimage_model, "
+            "width, height, sdxl_steps, sdxl_cfg, zimage_steps, zimage_cfg, "
+            "sdxl_sampler, sdxl_scheduler, zimage_sampler, zimage_scheduler, "
             "ideogram_quality, ideogram_megapixels, ideogram_aspect_ratio, "
-            "img2img_cfg, img2img_steps, img2img_sampler, img2img_megapixels, stealth, "
-            "sdxl_checkpoint, sdxl_sampler, sdxl_scheduler "
+            "img2img_cfg, img2img_steps, img2img_sampler, img2img_megapixels, stealth "
             "FROM user_settings WHERE discord_id = ?",
             (discord_id,),
         ).fetchone()
     if row is None:
         return {
             "positive_prompt": "", "negative_prompt": "",
-            "cfg": None, "steps": None,
+            "sdxl_checkpoint": None, "zimage_model": None,
+            "width": None, "height": None,
+            "sdxl_steps": None, "sdxl_cfg": None,
+            "zimage_steps": None, "zimage_cfg": None,
+            "sdxl_sampler": None, "sdxl_scheduler": None,
+            "zimage_sampler": None, "zimage_scheduler": None,
             "ideogram_quality": None, "ideogram_megapixels": None,
             "ideogram_aspect_ratio": None,
             "img2img_cfg": None, "img2img_steps": None,
             "img2img_sampler": None, "img2img_megapixels": None,
-            "stealth": False, "sdxl_checkpoint": None,
-            "sdxl_sampler": None, "sdxl_scheduler": None,
+            "stealth": False,
         }
     return dict(zip(SETTINGS_FIELDS, row))
 
@@ -182,11 +212,14 @@ def reset_settings(discord_id: int) -> dict:
     with _locked_conn() as conn:
         conn.execute(
             "UPDATE user_settings "
-            "SET positive_prompt = '', negative_prompt = '', cfg = NULL, steps = NULL, "
+            "SET positive_prompt = '', negative_prompt = '', "
+            "sdxl_checkpoint = NULL, zimage_model = NULL, width = NULL, height = NULL, "
+            "sdxl_steps = NULL, sdxl_cfg = NULL, zimage_steps = NULL, zimage_cfg = NULL, "
+            "sdxl_sampler = NULL, sdxl_scheduler = NULL, "
+            "zimage_sampler = NULL, zimage_scheduler = NULL, "
             "ideogram_quality = NULL, ideogram_megapixels = NULL, ideogram_aspect_ratio = NULL, "
             "img2img_cfg = NULL, img2img_steps = NULL, img2img_sampler = NULL, "
-            "img2img_megapixels = NULL, stealth = NULL, sdxl_checkpoint = NULL, "
-            "sdxl_sampler = NULL, sdxl_scheduler = NULL "
+            "img2img_megapixels = NULL, stealth = NULL "
             "WHERE discord_id = ?",
             (discord_id,),
         )
@@ -195,34 +228,32 @@ def reset_settings(discord_id: int) -> dict:
 
 
 def format_settings(s: dict) -> str:
-    """Human-readable summary of a user's defaults."""
-    cfg = s["cfg"] if s["cfg"] is not None else "(none)"
-    steps = s["steps"] if s["steps"] is not None else "(none)"
-    iq = s.get("ideogram_quality") or "(none)"
-    im = s.get("ideogram_megapixels") if s.get("ideogram_megapixels") is not None else "(none)"
-    ia = s.get("ideogram_aspect_ratio") or "(none)"
-    ic = s.get("img2img_cfg") if s.get("img2img_cfg") is not None else "(none)"
-    is_ = s.get("img2img_steps") if s.get("img2img_steps") is not None else "(none)"
-    isamp = s.get("img2img_sampler") or "(none)"
-    imap = s.get("img2img_megapixels") if s.get("img2img_megapixels") is not None else "(none)"
+    """Human-readable summary of a user's defaults, in the canonical /settings order."""
+    def fmt(value):
+        return value if value not in (None, "") else "(none)"
     stealth_default = "yes" if s.get("stealth") else "no"
-    sdxl_ckpt = s.get("sdxl_checkpoint") or "(none)"
-    sdxl_sampler = s.get("sdxl_sampler") or "(none)"
-    sdxl_scheduler = s.get("sdxl_scheduler") or "(none)"
+    bullet = "\u2022"
     return (
-        f"• Positive prompt: {s['positive_prompt'] or '(none)'}\n"
-        f"• Negative prompt: {s['negative_prompt'] or '(none)'}\n"
-        f"• SDXL checkpoint: {sdxl_ckpt}\n"
-        f"• CFG: {cfg}\n"
-        f"• Steps: {steps}\n"
-        f"• SDXL sampler: {sdxl_sampler}\n"
-        f"• SDXL scheduler: {sdxl_scheduler}\n"
-        f"• Ideogram quality: {iq}\n"
-        f"• Ideogram megapixels: {im}\n"
-        f"• Ideogram aspect ratio: {ia}\n"
-        f"• img2img CFG: {ic}\n"
-        f"• img2img steps: {is_}\n"
-        f"• img2img sampler: {isamp}\n"
-        f"• img2img megapixels: {imap}\n"
-        f"• Stealth (ephemeral default): {stealth_default}\n"
+        f"{bullet} Positive prompt: {fmt(s.get('positive_prompt'))}\n"
+        f"{bullet} Negative prompt: {fmt(s.get('negative_prompt'))}\n"
+        f"{bullet} SDXL checkpoint: {fmt(s.get('sdxl_checkpoint'))}\n"
+        f"{bullet} Z-Image model: {fmt(s.get('zimage_model'))}\n"
+        f"{bullet} Width: {fmt(s.get('width'))}\n"
+        f"{bullet} Height: {fmt(s.get('height'))}\n"
+        f"{bullet} SDXL steps: {fmt(s.get('sdxl_steps'))}\n"
+        f"{bullet} SDXL CFG: {fmt(s.get('sdxl_cfg'))}\n"
+        f"{bullet} Z-Image steps: {fmt(s.get('zimage_steps'))}\n"
+        f"{bullet} Z-Image CFG: {fmt(s.get('zimage_cfg'))}\n"
+        f"{bullet} SDXL sampler: {fmt(s.get('sdxl_sampler'))}\n"
+        f"{bullet} SDXL scheduler: {fmt(s.get('sdxl_scheduler'))}\n"
+        f"{bullet} Z-Image sampler: {fmt(s.get('zimage_sampler'))}\n"
+        f"{bullet} Z-Image scheduler: {fmt(s.get('zimage_scheduler'))}\n"
+        f"{bullet} Ideogram quality: {fmt(s.get('ideogram_quality'))}\n"
+        f"{bullet} Ideogram megapixels: {fmt(s.get('ideogram_megapixels'))}\n"
+        f"{bullet} Ideogram aspect ratio: {fmt(s.get('ideogram_aspect_ratio'))}\n"
+        f"{bullet} img2img CFG: {fmt(s.get('img2img_cfg'))}\n"
+        f"{bullet} img2img steps: {fmt(s.get('img2img_steps'))}\n"
+        f"{bullet} img2img sampler: {fmt(s.get('img2img_sampler'))}\n"
+        f"{bullet} img2img megapixels: {fmt(s.get('img2img_megapixels'))}\n"
+        f"{bullet} Stealth (ephemeral default): {stealth_default}\n"
     )
