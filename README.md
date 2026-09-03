@@ -8,8 +8,9 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 
 | Feature | Description |
 | --- | --- |
-| :art: Ideogram (`/ideogram`) | Generate images with Ideogram 4. Supports prompt, seed, quality preset, megapixels, and aspect ratio. |
-| :art: SDXL (`/sdxl`) | Generate images with SDXL. Supports prompt, negative prompt, seed, steps, width/height, and CFG. Can use any checkpoint in ComfyUI's `models/checkpoints` folder via the `model` parameter, plus up to two LoRAs (`lora1`, `lora2`) with a unified `lora_strength`. Automatically uses separate CLIP/VAE loaders for checkpoints that lack a bundled text encoder/VAE (split checkpoints). |
+| :art: Ideogram (`/ideogram`) | Generate professional images with Ideogram 4 by using JSON to carefully sketch your image. Supports seed, quality preset, megapixels, and aspect ratio. |
+| :art: Stable Diffusion XL (`/sdxl`) | Generate images with versatile SDXL models. Supports prompt, negative prompt, seed, steps, width/height, and CFG. Can use any checkpoint in ComfyUI's `models/checkpoints` folder via the `model` parameter, plus up to two LoRAs (`lora1`, `lora2`) with a unified `lora_strength`. Automatically uses separate CLIP/VAE loaders for checkpoints that lack a bundled text encoder/VAE (split checkpoints). |
+| :art: Z-Image Turbo & Base (`/zimage`) | Generate high quality images with very fast and light Z-Image models. Supports natural language prompts, up to two LoRAs, multiple Z-Image models, and also batch images. Other params are steps, width/height, and CFG. |
 | :pencil2: Image-to-Image (`/img2img`) | Edit one image or combine two images using Flux 2 Klein 4B Base. Supports cfg, steps, sampler, megapixels. |
 | :mag: Upscale (`/upscale`) | Upscale an attached image using SDXL, SeedVR2, or FlashVSR. SDXL shows a picker to use any checkpoint in `models/checkpoints`. Supports custom scale factor, prompt, negative, and strength. |
 | :speech_balloon: Prompt Generation (`/gen_prompt`) | Converts a natural-language idea into a structured Ideogram 4 JSON caption using an LLM (OpenAI-compatible endpoint). Includes reasoning-effort selection. |
