@@ -10,6 +10,7 @@ config.yaml
 # Model binaries (downloaded/exported at runtime)
 *.pt
 *.onnx
+.models/
 
 # Python
 __pycache__/
