@@ -230,6 +230,7 @@ git clone https://github.com/ltdrdata/was-node-suite-comfyui
 Place these in ComfyUI's `models/` directories:
 
 - Stable Diffusion XL
+> Make sure to specify the correct name of the default checkpoint the bot will use in config.yaml
 
 | Model File | Location | Used By |
 | --- | --- | --- |
@@ -248,6 +249,7 @@ Place these in ComfyUI's `models/` directories:
 
 - Z-Image Turbo & Base - Image Generation
 > You only need to download one of these diffusion models, along with the VAE. NVFP4 is the lightest and fastest, while BF16 has the best quality.
+> Make sure to specify the correct name of the default model the bot will use in config.yaml
 
 | Model File | Location | Used By |
 | --- | --- | --- |
