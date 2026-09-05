@@ -109,22 +109,25 @@ class JobQueueManager:
             await q.wait_drained()
 
     def position(self, lane: str) -> int:
-        """1-based position the next job on ``lane`` would occupy.
+        """1-based position of the next job among the waiting jobs on ``lane``.
 
-        1 means it will start immediately (nothing running, nothing queued).
+        Only jobs queued *ahead* of the next job are counted (the currently
+        running job does not occupy a waiting slot). The first waiting job is #1.
         """
-        active, pending = self._lanes[self._lane_key(lane)].stats()
-        return active + pending + 1
+        _, pending = self._lanes[self._lane_key(lane)].stats()
+        return pending + 1
 
     def waiting_prefix(self, lane: str) -> str:
         """Text to prepend to a progress message when the job must wait.
 
-        Returns an empty string when the job will start immediately.
+        Returns an empty string when the job will start immediately (nothing
+        running and nothing queued). Otherwise shows the 1-based position in
+        line, where #1 is the first waiting job.
         """
-        pos = self.position(lane)
-        if pos <= 1:
+        active, pending = self._lanes[self._lane_key(lane)].stats()
+        if active == 0 and pending == 0:
             return ""
-        return f"\u23f3 You're #{pos} in line.\n\n"
+        return f"\u23f3 You're #{pending + 1} in line.\n\n"
 
 
 def _resolve_mode() -> str:

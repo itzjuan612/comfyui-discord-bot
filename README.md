@@ -203,7 +203,7 @@ queueing:
 - **`unified`** (default) — one single serial queue. Image generation and prompt generation never run at the same time (at most 1 concurrent job). Safest against resource collapse.
 - **`separate`** — two independent serial lanes (`comfyui` and `llm`). Each lane runs one job at a time, but the two lanes run in parallel, so an image generation and a prompt generation may run concurrently (up to 2 jobs, one per resource).
 
-Users whose job must wait see their queue position prepended to the progress message, e.g. `⏳ You're #2 in line.` When no job is running, no prefix is shown.
+Users whose job must wait see their queue position prepended to the progress message, e.g. `⏳ You're #1 in line.` (the first waiting job is #1). When no job is running, no prefix is shown.
 
 ## Storage
 
