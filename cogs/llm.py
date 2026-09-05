@@ -97,11 +97,16 @@ async def gen_prompt(interaction: discord.Interaction, prompt: str, megapixels: 
                     temperature=temperature,
                     reasoning_effort=effort,
                 )
+                # Write the result into the "Generating prompt\u2026" follow-up
+                # message that was posted when the effort was selected, not the
+                # picker message. Fall back to the picker if the follow-up
+                # couldn't be created.
+                out_msg = state.get("followup_msg") or msg
                 if len(result) > 2000:
                     txt_file = discord.File(
                         io.BytesIO(result.encode("utf-8")), filename="prompt.txt"
                     )
-                    await msg.edit(
+                    await out_msg.edit(
                         content=(
                             "\u26a0\ufe0f The generated prompt is longer than Discord's "
                             "2000-character limit, so it can't be shown directly. "
@@ -111,7 +116,13 @@ async def gen_prompt(interaction: discord.Interaction, prompt: str, megapixels: 
                         attachments=[txt_file],
                     )
                 else:
-                    await msg.edit(content=result)
+                    await out_msg.edit(content=result)
+            else:
+                # No reasoning effort was selected before the timeout; tell the
+                # user on the picker message that generation was cancelled.
+                await msg.edit(
+                    content="\u23f3 You ran out of time to select a reasoning effort, so prompt generation was cancelled."
+                )
 
             # Unload the model (ignored on servers without the unload endpoint).
             await llm_model_unload(chosen_model)

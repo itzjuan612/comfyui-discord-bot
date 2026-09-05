@@ -688,27 +688,30 @@ class ThinkingView(View):
     async def handle_select(self, interaction: discord.Interaction, value: str):
         # Record the user's choice and release the session job, which performs
         # the actual generation and unload. Respond so Discord acknowledges
-        # the click.
+        # the click. The follow-up "Generating prompt\u2026" message is stored
+        # in state so the session job can write the final result there instead
+        # of the picker message.
         self.stop()
         self.state["selected_value"] = value
-        self.completion.set()
+        self.state["followup_msg"] = None
         try:
             await interaction.response.defer(ephemeral=True)
-            await interaction.followup.send(
+            self.state["followup_msg"] = await interaction.followup.send(
                 content="\U0001f9e0 Generating prompt\u2026", ephemeral=True
             )
         except Exception:
-            pass
+            self.state["followup_msg"] = None
+        self.completion.set()
 
     async def on_timeout(self):
-        # No reasoning effort was chosen; signal the session job to skip
-        # generation (it will just unload the model and free the lane).
+        # No reasoning effort was chosen; signal the session job so it can post
+        # the "ran out of time" message on the picker and unload the model to
+        # free the LLM lane. (Messaging is done by the session job because it
+        # holds a reliable reference to the picker message.)
+        self.stop()
         self.state["selected_value"] = None
+        self.state["followup_msg"] = None
         self.completion.set()
-        try:
-            await self.message.edit(content="\u23f3 Reasoning-effort selection expired; prompt generation cancelled.")
-        except Exception:
-            pass
 
 
 class ThinkingSelect(Select):
