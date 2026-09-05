@@ -660,7 +660,7 @@ class ThinkingView(View):
     def __init__(self, chosen_model: str, supported: list[str], prompt: str,
                  megapixels: int, aspect_ratio: str,
                  max_tokens: int | None, temperature: float | None, llm_cfg: dict):
-        super().__init__(timeout=120)
+        super().__init__(timeout=30)
         self.chosen_model = chosen_model
         self.prompt = prompt
         self.megapixels = megapixels
