@@ -653,13 +653,19 @@ class ThinkingView(View):
 
     The select lists only the reasoning-effort values the endpoint accepted
     during probing (HTTP 200), plus "API default", which sends no
-    reasoning_effort tag at all. Selecting an option runs the prompt
-    workflow and the LLM call.
+    reasoning_effort tag at all.
+
+    The view does NOT run the generation itself. Instead it stores the chosen
+    value and signals ``completion`` so the session job (which holds the LLM
+    lane for the whole session) can proceed with generation, or skip it on
+    timeout. This keeps the LLM lane occupied from model load through unload
+    so no other LLM job can start while the model is loaded.
     """
 
     def __init__(self, chosen_model: str, supported: list[str], prompt: str,
                  megapixels: int, aspect_ratio: str,
-                 max_tokens: int | None, temperature: float | None, llm_cfg: dict):
+                 max_tokens: int | None, temperature: float | None, llm_cfg: dict,
+                 completion, state: dict):
         super().__init__(timeout=30)
         self.chosen_model = chosen_model
         self.prompt = prompt
@@ -668,6 +674,8 @@ class ThinkingView(View):
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.llm_cfg = llm_cfg
+        self.completion = completion
+        self.state = state
         options = [discord.SelectOption(label="API default", value="api_default")]
         options += [discord.SelectOption(label=e, value=e) for e in supported]
         self.add_item(ThinkingSelect(
@@ -678,69 +686,25 @@ class ThinkingView(View):
         ))
 
     async def handle_select(self, interaction: discord.Interaction, value: str):
+        # Record the user's choice and release the session job, which performs
+        # the actual generation and unload. Respond so Discord acknowledges
+        # the click.
         self.stop()
-        await interaction.response.defer(ephemeral=True)
-        msg = await interaction.original_response()
-        async def _gen_prompt_job():
-            effort = await resolve_reasoning_effort(self.chosen_model, value, self.llm_cfg)
-            patches = {
-                "191": {
-                    "aspect_ratio": normalize_aspect_ratio(self.aspect_ratio),
-                    "megapixels": int(self.megapixels),
-                },
-                "134:115": {
-                    "value": self.prompt,
-                },
-            }
-            composed_prompt = await run_text_workflow(
-                "workflows/ideogram_prompt_gen/ideogram4_prompt_gen.json",
-                patches,
-                target_node="111",
-            )
-            result = await call_llm(
-                composed_prompt,
-                self.chosen_model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                reasoning_effort=effort,
-            )
-            return result
-
+        self.state["selected_value"] = value
+        self.completion.set()
         try:
-            # Run on the LLM lane: serial with other LLM jobs, and (in
-            # "separate" mode) independent from ComfyUI generations.
-            result = await job_queue.submit(_gen_prompt_job(), lane="llm", name="gen_prompt")
-            if len(result) > 2000:
-                # Discord's message limit is 2000 chars; oversized prompts
-                # are delivered as an attached .txt file instead.
-                txt_file = discord.File(
-                    io.BytesIO(result.encode("utf-8")), filename="prompt.txt"
-                )
-                await msg.edit(
-                    content=(
-                        "\u26a0\ufe0f The generated prompt is longer than Discord's "
-                        "2000-character limit, so it can't be shown directly. "
-                        "It has been saved to the attached .txt file — copy the "
-                        "text inside that file instead."
-                    ),
-                    attachments=[txt_file],
-                )
-            else:
-                await msg.edit(content=result)
-        except Exception as exc:
-            log.exception("gen_prompt failed")
-            await reply_error(interaction, f"\u274c Prompt generation failed: {exc}", target=msg)
-        finally:
-            # Free memory once the prompt is done (ignored on servers without
-            # the unload endpoint). Queue the unload so it also stays off the
-            # LLM server until no other job is running.
-            await job_queue.submit(llm_model_unload(self.chosen_model), lane="llm", name="llm_unload")
+            await interaction.response.defer(ephemeral=True)
+            await interaction.followup.send(
+                content="\U0001f9e0 Generating prompt\u2026", ephemeral=True
+            )
+        except Exception:
+            pass
 
     async def on_timeout(self):
-        # The model was loaded when this view was shown; free it since no
-        # prompt will be generated. Queue the unload to keep LLM-server
-        # access serial.
-        await job_queue.submit(llm_model_unload(self.chosen_model), lane="llm", name="llm_unload")
+        # No reasoning effort was chosen; signal the session job to skip
+        # generation (it will just unload the model and free the lane).
+        self.state["selected_value"] = None
+        self.completion.set()
         try:
             await self.message.edit(content="\u23f3 Reasoning-effort selection expired; prompt generation cancelled.")
         except Exception:
