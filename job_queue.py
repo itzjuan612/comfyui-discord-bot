@@ -108,6 +108,14 @@ class JobQueueManager:
         for q in self._lanes.values():
             await q.wait_drained()
 
+    def total_jobs(self) -> int:
+        """Total number of jobs (running or queued) across all lanes."""
+        total = 0
+        for q in self._lanes.values():
+            active, pending = q.stats()
+            total += active + pending
+        return total
+
     def position(self, lane: str) -> int:
         """1-based position of the next job among the waiting jobs on ``lane``.
 

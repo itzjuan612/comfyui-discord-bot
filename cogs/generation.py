@@ -711,6 +711,13 @@ async def flush(interaction: discord.Interaction):
     log = logging.getLogger("bot")
     log.info("flush: freeing ComfyUI memory")
     try:
+        # If there are jobs running or queued, tell the user they're waiting
+        # so they know why the flush hasn't happened yet.
+        n = job_queue.total_jobs()
+        if n > 0:
+            await interaction.edit_original_response(
+                content=f"\u23f3 Waiting for {n} job{'s' if n != 1 else ''} to finish before flushing\u2026"
+            )
         # Wait for every queued generation / prompt job to finish first,
         # so /flush never interrupts a running job.
         await job_queue.wait_drained()
