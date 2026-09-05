@@ -20,6 +20,7 @@ from core import (
 from ui.autocomplete import _sdxl_model_autocomplete, _sdxl_lora_autocomplete, _zimage_model_autocomplete
 from workflow import run_image
 from ui.views import GenerationView, CheckpointPickerView
+from job_queue import job_queue
 
 
 async def run_t2i_generation(interaction: discord.Interaction, model: str,
@@ -31,17 +32,22 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
     ``gen_kwargs`` so each command exposes only its own settings.
     """
     spec = config["models"][model]["t2i"]
+    wait_prefix = job_queue.waiting_prefix("comfyui")
     await interaction.response.send_message(
-        content="\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+        content=wait_prefix + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
         ephemeral=stealth,
     )
     progress_msg = await interaction.original_response()
     progress = ProgressUpdater(progress_msg)
     log.info("%s: prompt=%r", model, prompt)
     try:
-        images, meta = await run_image(
-            spec, on_progress=progress.update,
-            model_key=model, **gen_kwargs,
+        images, meta = await job_queue.submit(
+            run_image(
+                spec, on_progress=progress.update,
+                model_key=model, **gen_kwargs,
+            ),
+            lane="comfyui",
+            name=f"{model}_t2i",
         )
         progress.done = True
         log.info("%s: got %d images", model, len(images))
@@ -491,15 +497,19 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
             return
 
         await interaction.response.send_message(
-            content="\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
         progress_msg = await interaction.original_response()
         progress = ProgressUpdater(progress_msg)
-        images, meta = await run_image(
-            spec, on_progress=progress.update, model_key=model, prompt=prompt,
-            negative=negative, strength=strength, image_filename=uploaded_name,
-            scale=scale, input_longest_side=input_longest_side,
+        images, meta = await job_queue.submit(
+            run_image(
+                spec, on_progress=progress.update, model_key=model, prompt=prompt,
+                negative=negative, strength=strength, image_filename=uploaded_name,
+                scale=scale, input_longest_side=input_longest_side,
+            ),
+            lane="comfyui",
+            name=f"{model}_upscale",
         )
         progress.done = True
         for img in images:
@@ -592,7 +602,7 @@ async def img2img(interaction: discord.Interaction, workflow: str,
         return
 
     await interaction.response.send_message(
-        content="\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+        content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
         ephemeral=stealth,
     )
     progress_msg = await interaction.original_response()
@@ -653,8 +663,12 @@ async def img2img(interaction: discord.Interaction, workflow: str,
         gen_kwargs["image_filename"] = uploaded_files[0]
 
     try:
-        images, meta = await run_image(
-            spec, on_progress=progress.update, model_key=model, **gen_kwargs
+        images, meta = await job_queue.submit(
+            run_image(
+                spec, on_progress=progress.update, model_key=model, **gen_kwargs
+            ),
+            lane="comfyui",
+            name="flux2_klein_i2i",
         )
         progress.done = True
         for img in images:
@@ -697,6 +711,9 @@ async def flush(interaction: discord.Interaction):
     log = logging.getLogger("bot")
     log.info("flush: freeing ComfyUI memory")
     try:
+        # Wait for every queued generation / prompt job to finish first,
+        # so /flush never interrupts a running job.
+        await job_queue.wait_drained()
         await comfy.free_memory()
         await interaction.edit_original_response(content="\U0001f9f9 Done. All models and execution cache have been unloaded from ComfyUI.")
     except ComfyUIError as exc:

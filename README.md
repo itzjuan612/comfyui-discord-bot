@@ -26,6 +26,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | :broom: Flush (`/flush`) | Unloads all ComfyUI models and execution cache to free VRAM/RAM. |
 | :hammer_and_wrench: Admin Panel (`/admin`) | Owner can restart the bot, manage admins, and manage bans. |
 | :stopwatch: Cooldown | Per-user 20-second minimum interval between generations. |
+| :hourglass: Job Queueing | Serializes resource-heavy work so concurrent users don't collapse resources. Configurable `queueing.mode` (see below). Users waiting in line see their queue position. |
 | :floppy_disk: Memory Management | Automatically frees ComfyUI memory when switching between workflows, or when choosing a different checkpoint (`model`) for `/sdxl`. Reusing the same checkpoint causes no flush. |
 
 ## Commands Reference
@@ -152,6 +153,7 @@ Key modules:
 | `comfyui_client.py` | Async HTTP/WS client for ComfyUI (`/prompt`, `/history`, `/view`, `/upload/image`, `/free`); caches the checkpoint list (60s TTL) and lists LoRA files (`/models/loras`) |
 | `workflow.py` | Loads workflow JSON, converts graph format to API format, patches node inputs from config specs (including LoRA wiring and the SDXL split-checkpoint switch), and runs image/text workflows with automatic split-checkpoint retry |
 | `llm_client.py` | OpenAI-compatible LLM client: model listing, load/unload, reasoning-effort probing, cached model list |
+| `job_queue.py` | Configurable serial job queue (unified or separate lanes) that serializes ComfyUI generations and LLM jobs; provides queue-position/waiting messages |
 | `config_loader.py` | Loads `config.yaml` (auto-generates it with defaults if missing) and backfills workflow model defaults |
 | `user_settings.py` | Per-user defaults (SQLite) |
 | `generation_store.py` | Persisted generation params per message (SQLite) |
@@ -189,6 +191,20 @@ llm:
 
 The bot calls `<base_url>/v1/chat/completions` and can also query `/v1/models` or `/api/v1/models` (LM Studio) to list available models. It optionally loads/unloads models via LM Studio's `/api/v1/models/load` and `/api/v1/models/unload` endpoints.
 
+## Job Queueing
+
+Resource-heavy work — ComfyUI image generation and the `/gen_prompt` LLM pipeline (model load, reasoning-effort probe, generation, model unload) — is routed through an internal job queue so that concurrent users cannot exhaust the machine. Set the scheduling mode in `config.yaml`:
+
+```yaml
+queueing:
+  mode: unified   # or "separate"
+```
+
+- **`unified`** (default) — one single serial queue. Image generation and prompt generation never run at the same time (at most 1 concurrent job). Safest against resource collapse.
+- **`separate`** — two independent serial lanes (`comfyui` and `llm`). Each lane runs one job at a time, but the two lanes run in parallel, so an image generation and a prompt generation may run concurrently (up to 2 jobs, one per resource).
+
+Users whose job must wait see their queue position prepended to the progress message, e.g. `⏳ You're #2 in line.` When no job is running, no prefix is shown.
+
 ## Storage
 
 Three SQLite databases are created automatically in the project folder:
@@ -210,6 +226,7 @@ comfyuidiscord/
 |-- comfyui_client.py       # ComfyUI HTTP/WS client
 |-- workflow.py             # Workflow loading, graph->API conversion, spec patching
 |-- llm_client.py           # LLM client: models, load/unload, reasoning-effort probing
+|-- job_queue.py            # Configurable serial job queue (unified/separate lanes)
 |-- config.yaml             # Configuration (auto-generated if missing)
 |-- config.example.yaml     # Configuration template
 |-- config_loader.py        # YAML loader + model-default backfill

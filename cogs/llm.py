@@ -5,6 +5,7 @@ from bot import bot
 from core import config, log, ban_guard, check_cooldown, nsfw_blocked, schedule_message_deletion, reply_error, ASPECT_RATIO_CHOICES
 from llm_client import fetch_llm_models, llm_model_load, probe_reasoning_efforts
 from ui.autocomplete import llm_model_autocomplete
+from job_queue import job_queue
 from ui.views import ThinkingView
 
 
@@ -44,10 +45,13 @@ async def gen_prompt(interaction: discord.Interaction, prompt: str, megapixels: 
         return
     log.info("gen_prompt: prompt=%r megapixels=%s aspect_ratio=%s model=%r", prompt, megapixels, aspect_ratio, chosen_model)
     try:
-        # Load the model and probe which reasoning-effort values the endpoint
-        # accepts; only those become selectable options in the view.
-        await llm_model_load(chosen_model)
-        supported = await probe_reasoning_efforts(chosen_model)
+        # Queue the model load so it never competes with a running generation
+        # (ComfyUI and the LLM server share the same machine). Then probe which
+        # reasoning-effort values the endpoint accepts.
+        await job_queue.submit(llm_model_load(chosen_model), lane="llm", name="llm_load")
+        # Probe also talks to the LLM endpoint, so it is queued too so it
+        # never overlaps another LLM job.
+        supported = await job_queue.submit(probe_reasoning_efforts(chosen_model), lane="llm", name="llm_probe")
         view = ThinkingView(
             chosen_model, supported, prompt, megapixels, aspect_ratio,
             max_tokens, temperature, llm_cfg,
