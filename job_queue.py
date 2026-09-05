@@ -67,8 +67,8 @@ class JobQueue:
         await self._drained.wait()
 
     def stats(self) -> tuple[int, int]:
-        """Return ``(pending, active)`` counts."""
-        return self._pending, self._active
+        """Return ``(active, pending)`` counts."""
+        return self._active, self._pending
 
 
 class JobQueueManager:
