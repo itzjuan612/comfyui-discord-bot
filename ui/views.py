@@ -50,16 +50,15 @@ class RetryButton(Button):
             ephemeral=stealth,
         )
         progress_msg = await interaction.original_response()
-        progress = ProgressUpdater(progress_msg)
+        progress = ProgressUpdater(progress_msg, lane="comfyui")
+        job = run_image(
+            params["spec"], on_progress=progress.update,
+            model_key=params["model"], **params["kwargs"]
+        )
+        fut = job_queue.submit(job, lane="comfyui", name=f"retry_{params['model']}")
+        progress.arm(job)
         try:
-            images, meta = await job_queue.submit(
-                run_image(
-                    params["spec"], on_progress=progress.update,
-                    model_key=params["model"], **params["kwargs"]
-                ),
-                lane="comfyui",
-                name=f"retry_{params['model']}",
-            )
+            images, meta = await fut
             progress.done = True
             for img in images:
                 if await nsfw_guard.check_image_nsfw(img, interaction):
@@ -152,7 +151,8 @@ class UpscaleModelButton(Button):
             content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
-        progress = ProgressUpdater(progress_msg)
+        progress = ProgressUpdater(progress_msg, lane="comfyui",
+                                   label="\U0001f3a8 Upscaling image\u2026")
         spec = config["models"].get(model, {}).get("upscale")
         if spec is None:
             progress.done = True
@@ -166,18 +166,17 @@ class UpscaleModelButton(Button):
         ckpt_name = view.ckpt_name if model == "sdxl" else None
         sampler = view.sampler if model == "sdxl" else None
         scheduler = view.scheduler if model == "sdxl" else None
+        job = run_image(
+            spec, on_progress=progress.update, model_key=model, prompt=None,
+            negative=negative, strength=None,
+            image_filename=view.uploaded_name, scale=2,
+            input_longest_side=view.input_longest_side,
+            ckpt_name=ckpt_name, sampler=sampler, scheduler=scheduler,
+        )
+        fut = job_queue.submit(job, lane="comfyui", name=f"{model}_upscale")
+        progress.arm(job)
         try:
-            images, meta = await job_queue.submit(
-                run_image(
-                    spec, on_progress=progress.update, model_key=model, prompt=None,
-                    negative=negative, strength=None,
-                    image_filename=view.uploaded_name, scale=2,
-                    input_longest_side=view.input_longest_side,
-                    ckpt_name=ckpt_name, sampler=sampler, scheduler=scheduler,
-                ),
-                lane="comfyui",
-                name=f"{model}_upscale",
-            )
+            images, meta = await fut
             progress.done = True
             for img in images:
                 if await nsfw_guard.check_image_nsfw(img, interaction):
@@ -309,19 +308,19 @@ class CheckpointPickerView(View):
             content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=self.stealth,
         )
-        progress = ProgressUpdater(progress_msg)
+        progress = ProgressUpdater(progress_msg, lane="comfyui",
+                                   label="\U0001f3a8 Upscaling image\u2026")
+        job = run_image(
+            self.spec, on_progress=progress.update, model_key=self.model_key,
+            prompt=self.prompt, negative=self.negative, strength=self.strength,
+            image_filename=self.uploaded_name, scale=self.scale,
+            input_longest_side=self.input_longest_side,
+            ckpt_name=ckpt_name, sampler=self.sampler, scheduler=self.scheduler,
+        )
+        fut = job_queue.submit(job, lane="comfyui", name=f"{self.model_key}_upscale")
+        progress.arm(job)
         try:
-            images, meta = await job_queue.submit(
-                run_image(
-                    self.spec, on_progress=progress.update, model_key=self.model_key,
-                    prompt=self.prompt, negative=self.negative, strength=self.strength,
-                    image_filename=self.uploaded_name, scale=self.scale,
-                    input_longest_side=self.input_longest_side,
-                    ckpt_name=ckpt_name, sampler=self.sampler, scheduler=self.scheduler,
-                ),
-                lane="comfyui",
-                name=f"{self.model_key}_upscale",
-            )
+            images, meta = await fut
             progress.done = True
             for img in images:
                 if await nsfw_guard.check_image_nsfw(img, interaction):
@@ -525,7 +524,8 @@ class EditImageModal(Modal):
             content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Editing image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
-        progress = ProgressUpdater(progress_msg)
+        progress = ProgressUpdater(progress_msg, lane="comfyui",
+                                   label="\U0001f3a8 Editing image\u2026")
         log.info("Edit Image clicked for message %s", interaction.message.id)
 
         model = "flux2_klein"
@@ -569,11 +569,10 @@ class EditImageModal(Modal):
         }
 
         try:
-            images, meta = await job_queue.submit(
-                run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs),
-                lane="comfyui",
-                name="flux2_klein_i2i",
-            )
+            job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
+            fut = job_queue.submit(job, lane="comfyui", name="flux2_klein_i2i")
+            progress.arm(job)
+            images, meta = await fut
             progress.done = True
             for img in images:
                 if await nsfw_guard.check_image_nsfw(img, interaction):

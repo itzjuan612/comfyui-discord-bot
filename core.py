@@ -140,20 +140,58 @@ class ProgressUpdater:
     happen at most once per bar-level change so Discord rate limits are
     never approached. Setting ``done`` stops further edits once the final
     image (or an error) has been posted.
+
+    When created with ``lane`` and ``label`` and then ``arm``ed with the job's
+    coroutine, it also keeps the "You're #N in line" prefix live: as jobs
+    ahead finish, the message's queue position is refreshed until our own job
+    starts (after which normal progress edits take over).
     """
 
-    def __init__(self, message):
+    def __init__(self, message, lane=None, label=None):
         # ``message`` is the original response message (an InteractionMessage)
         # returned by interaction.original_response(); it is edited in place
         # to show progress.
         self.message = message
         self.level = 0
+        self.pct = 0.0
         self.done = False
+        self.lane = lane
+        self.label = label or "\U0001f3a8 Generating image\u2026"
+        self.job = None
+        self.started = False
+        self._pos = None
+
+    def arm(self, job):
+        """Attach the job this updater is waiting for and start tracking the queue.
+
+        ``arm`` must be called *after* the job is submitted to the lane so that
+        ``live_position`` includes our job. Our waiting-line position equals the
+        number of queued jobs (jobs ahead of us + us), matching the initial
+        "You're #N in line" prefix shown on the progress message. We then
+        decrement ``_pos`` by one for every job ahead that finishes, so the
+        displayed position drops smoothly (#4 -> #3 -> #2 -> #1).
+        """
+        self.job = job
+        if self.lane:
+            from job_queue import job_queue
+            self._pos = job_queue.live_position(self.lane) or 1
+            job_queue.register(self.lane, self._on_queue_event)
+
+    def _unregister(self):
+        """Remove this updater from the lane's listeners."""
+        if self.lane:
+            from job_queue import job_queue
+            job_queue.unregister(self.lane, self._on_queue_event)
+
+    def disarm(self):
+        """Stop tracking the queue (call when the job is abandoned before it runs)."""
+        self._unregister()
 
     def update(self, progress: float) -> None:
         if self.done:
             return
         pct = max(0.0, min(100.0, progress * 100))
+        self.pct = pct
         level = max(0, min(PROGRESS_BAR_WIDTH, round(pct / 100 * PROGRESS_BAR_WIDTH)))
         if level <= self.level:
             return
@@ -165,10 +203,41 @@ class ProgressUpdater:
             return
         try:
             await self.message.edit(
-                content=f"\U0001f3a8 Generating image\u2026 [{progress_bar(level)}] {int(pct)}%"
+                content=f"{self.label} [{progress_bar(level)}] {int(pct)}%"
             )
         except Exception as exc:
             log.warning("progress edit failed: %s", exc)
+
+    async def _on_queue_event(self, event, coro):
+        # Stop tracking once our job has started running or the session ended.
+        if self.done or self.started:
+            self._unregister()
+            return
+        if event == "start":
+            if coro is self.job:
+                self.started = True
+                self._unregister()
+                # Our job has begun: clear the "in line" prefix immediately so
+                # the message shows the progress bar (no queue prefix) right
+                # away instead of waiting for the first progress tick.
+                asyncio.create_task(self._edit(self.level, self.pct))
+            return
+        # A job ahead of us finished: move up one slot in line. We track our
+        # position with a counter (decrementing once per job ahead that
+        # finishes) rather than re-reading queue stats, so the displayed number
+        # drops smoothly (#4 -> #3 -> #2 -> #1) even if this callback runs
+        # after the next job has already started. When we are already #1 we
+        # simply stop showing a position (our job will start next).
+        if self._pos is None or self._pos <= 1:
+            return
+        self._pos -= 1
+        prefix = f"\u23f3 You're #{self._pos} in line.\n\n"
+        try:
+            await self.message.edit(
+                content=prefix + f"{self.label} [{progress_bar(self.level)}] {int(self.pct)}%"
+            )
+        except Exception as exc:
+            log.warning("queue position edit failed: %s", exc)
 def _parse_opt_float(value: str | None) -> float | None:
     if value is None:
         return None

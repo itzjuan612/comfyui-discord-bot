@@ -23,6 +23,7 @@ class JobQueue:
         self._active = 0
         self._drained = asyncio.Event()
         self._drained.set()
+        self._listeners = []
 
     def _ensure_worker(self) -> None:
         """Start the single worker task if it is not already running."""
@@ -36,6 +37,8 @@ class JobQueue:
             # Job moves from the queue to the running slot.
             self._pending -= 1
             self._active += 1
+            for callback in list(self._listeners):
+                asyncio.create_task(self._fire(callback, "start", coro))
             try:
                 result = await coro
             except Exception as exc:
@@ -46,6 +49,25 @@ class JobQueue:
                 self._active -= 1
                 if self._pending == 0 and self._active == 0:
                     self._drained.set()
+                for callback in list(self._listeners):
+                    asyncio.create_task(self._fire(callback, "finish", coro))
+
+    async def _fire(self, callback, event: str, coro) -> None:
+        """Invoke a listener callback, never letting its failure break the worker."""
+        try:
+            await callback(event, coro)
+        except Exception:
+            log.exception("queue listener failed")
+
+    def register(self, callback) -> None:
+        """Register an async ``callback(event, coro)`` notified when jobs start/finish."""
+        self._listeners.append(callback)
+
+    def unregister(self, callback) -> None:
+        try:
+            self._listeners.remove(callback)
+        except ValueError:
+            pass
 
     def submit(self, coro, name: str = "job") -> asyncio.Future:
         """Queue ``coro`` to run serially.
@@ -136,6 +158,23 @@ class JobQueueManager:
         if active == 0 and pending == 0:
             return ""
         return f"\u23f3 You're #{pending + 1} in line.\n\n"
+
+    def live_position(self, lane: str) -> int | None:
+        """1-based position of a job that is *already queued* on ``lane``.
+
+        ``pending`` counts waiting jobs including the job itself, so its
+        position equals ``pending`` (jobs ahead + 1). Returns ``None`` when
+        the lane has no waiting jobs.
+        """
+        _, pending = self._lanes[self._lane_key(lane)].stats()
+        return pending if pending > 0 else None
+
+    def register(self, lane: str, callback) -> None:
+        """Register a listener on the lane, notified on job start/finish."""
+        self._lanes[self._lane_key(lane)].register(callback)
+
+    def unregister(self, lane: str, callback) -> None:
+        self._lanes[self._lane_key(lane)].unregister(callback)
 
 
 def _resolve_mode() -> str:

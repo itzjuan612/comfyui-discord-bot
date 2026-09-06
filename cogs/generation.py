@@ -38,17 +38,16 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
         ephemeral=stealth,
     )
     progress_msg = await interaction.original_response()
-    progress = ProgressUpdater(progress_msg)
+    progress = ProgressUpdater(progress_msg, lane="comfyui")
     log.info("%s: prompt=%r", model, prompt)
     try:
-        images, meta = await job_queue.submit(
-            run_image(
-                spec, on_progress=progress.update,
-                model_key=model, **gen_kwargs,
-            ),
-            lane="comfyui",
-            name=f"{model}_t2i",
+        job = run_image(
+            spec, on_progress=progress.update,
+            model_key=model, **gen_kwargs,
         )
+        fut = job_queue.submit(job, lane="comfyui", name=f"{model}_t2i")
+        progress.arm(job)
+        images, meta = await fut
         progress.done = True
         log.info("%s: got %d images", model, len(images))
         for img in images:
@@ -501,16 +500,16 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
             ephemeral=stealth,
         )
         progress_msg = await interaction.original_response()
-        progress = ProgressUpdater(progress_msg)
-        images, meta = await job_queue.submit(
-            run_image(
-                spec, on_progress=progress.update, model_key=model, prompt=prompt,
-                negative=negative, strength=strength, image_filename=uploaded_name,
-                scale=scale, input_longest_side=input_longest_side,
-            ),
-            lane="comfyui",
-            name=f"{model}_upscale",
+        progress = ProgressUpdater(progress_msg, lane="comfyui",
+                                    label="\U0001f3a8 Upscaling image\u2026")
+        job = run_image(
+            spec, on_progress=progress.update, model_key=model, prompt=prompt,
+            negative=negative, strength=strength, image_filename=uploaded_name,
+            scale=scale, input_longest_side=input_longest_side,
         )
+        fut = job_queue.submit(job, lane="comfyui", name=f"{model}_upscale")
+        progress.arm(job)
+        images, meta = await fut
         progress.done = True
         for img in images:
             if await nsfw_guard.check_image_nsfw(img, interaction):
@@ -606,7 +605,7 @@ async def img2img(interaction: discord.Interaction, workflow: str,
         ephemeral=stealth,
     )
     progress_msg = await interaction.original_response()
-    progress = ProgressUpdater(progress_msg)
+    progress = ProgressUpdater(progress_msg, lane="comfyui")
     log = logging.getLogger("bot")
     log.info("img2img: workflow=%s prompt=%r", workflow, prompt)
 
@@ -615,6 +614,7 @@ async def img2img(interaction: discord.Interaction, workflow: str,
     spec = config["models"].get(model, {}).get(spec_key)
     if spec is None:
         progress.done = True
+        progress.disarm()
         await reply_error(interaction, f"\u274c Workflow {spec_key!r} is not configured.", target=progress_msg)
         return
 
@@ -634,6 +634,7 @@ async def img2img(interaction: discord.Interaction, workflow: str,
             uploaded_files.append(uploaded2)
     except Exception as exc:
         progress.done = True
+        progress.disarm()
         log.exception("img2img download/upload failed")
         await reply_error(interaction, f"\u274c Could not process the input images: {exc}", target=progress_msg)
         return
@@ -663,13 +664,10 @@ async def img2img(interaction: discord.Interaction, workflow: str,
         gen_kwargs["image_filename"] = uploaded_files[0]
 
     try:
-        images, meta = await job_queue.submit(
-            run_image(
-                spec, on_progress=progress.update, model_key=model, **gen_kwargs
-            ),
-            lane="comfyui",
-            name="flux2_klein_i2i",
-        )
+        job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
+        fut = job_queue.submit(job, lane="comfyui", name="flux2_klein_i2i")
+        progress.arm(job)
+        images, meta = await fut
         progress.done = True
         for img in images:
             if await nsfw_guard.check_image_nsfw(img, interaction):
