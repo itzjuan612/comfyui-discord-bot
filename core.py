@@ -238,6 +238,110 @@ class ProgressUpdater:
             )
         except Exception as exc:
             log.warning("queue position edit failed: %s", exc)
+
+
+class QueueWaitUpdater:
+    """Keeps a message's "You're #N in line" prefix live while its job waits
+    in a queue lane (used by /gen_prompt's LLM session).
+
+    Unlike ``ProgressUpdater`` there is no progress bar: the message shows
+    only the queue position above a static label. ``arm`` must be called
+    *after* the job is submitted. When the lane is idle (the job will start
+    immediately) the updater stays silent so the interaction keeps Discord's
+    native "thinking" state until the job edits the message itself.
+    """
+
+    def __init__(self, message, lane, label):
+        # ``message`` is the interaction's original response message; it is
+        # edited in place to show the waiting-line status.
+        self.message = message
+        self.lane = lane
+        self.label = label
+        self.job = None
+        self.started = False
+        self._stopped = False
+        self._pos = None
+        self._edit_task = None
+
+    def arm(self, job):
+        """Attach the queued job and start tracking the line.
+
+        Must be called after the job is submitted so the lane stats include
+        it: ``pending`` then counts our own job, so the waiting-line position
+        equals ``pending`` (jobs ahead + 1). When the lane is idle nothing is
+        shown and no listener is registered.
+        """
+        self.job = job
+        from job_queue import job_queue
+        active, pending = job_queue.lane_stats(self.lane)
+        if active == 0 and pending <= 1:
+            # Starts immediately; leave the "thinking" state untouched.
+            return
+        self._pos = pending
+        job_queue.register(self.lane, self._on_queue_event)
+        self._schedule_edit(self._pos)
+
+    def _unregister(self):
+        if self.lane:
+            from job_queue import job_queue
+            job_queue.unregister(self.lane, self._on_queue_event)
+
+    def disarm(self):
+        """Stop tracking the queue; no further status edits may be scheduled.
+
+        Called when the job is abandoned or has already failed: a "start"
+        event can still be fired afterwards (the worker fires it before the
+        awaiting caller observes the failure), so ``_stopped`` guards against
+        a late clear-prefix edit overwriting an error message.
+        """
+        self._stopped = True
+        if self._edit_task is not None and not self._edit_task.done():
+            self._edit_task.cancel()
+        self._unregister()
+
+    def _schedule_edit(self, pos: int | None) -> None:
+        if self._stopped:
+            return
+        # Track the latest edit task so ``disarm`` can cancel a still-pending
+        # status edit before an error message is written over it.
+        self._edit_task = asyncio.create_task(self._edit(pos))
+
+    async def _edit(self, pos: int | None) -> None:
+        try:
+            if pos is None:
+                # Our job started: drop the prefix; the job's own edits
+                # (picker, results, errors) take over from here.
+                await self.message.edit(content=self.label)
+            else:
+                await self.message.edit(
+                    content=f"\u23f3 You're #{pos} in line.\n\n{self.label}"
+                )
+        except Exception as exc:
+            log.warning("queue status edit failed: %s", exc)
+
+    async def _on_queue_event(self, event, coro):
+        # Stop tracking once our job has started running.
+        if self.started:
+            self._unregister()
+            return
+        if event == "start":
+            if coro is self.job:
+                self.started = True
+                self._unregister()
+                # Clear the "in line" prefix right away so the message shows
+                # only the label while the job prepares.
+                self._schedule_edit(None)
+            return
+        # A job ahead of us finished: move up one slot in line. The position
+        # is tracked with a decrementing counter (mirroring ProgressUpdater)
+        # so it drops smoothly (#3 -> #2 -> #1); at #1 we stop editing, as our
+        # job will start next.
+        if self._pos is None or self._pos <= 1:
+            return
+        self._pos -= 1
+        self._schedule_edit(self._pos)
+
+
 def _parse_opt_float(value: str | None) -> float | None:
     if value is None:
         return None

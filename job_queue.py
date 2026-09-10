@@ -147,6 +147,10 @@ class JobQueueManager:
         _, pending = self._lanes[self._lane_key(lane)].stats()
         return pending + 1
 
+    def lane_stats(self, lane: str) -> tuple[int, int]:
+        """Return ``(active, pending)`` counts for ``lane``."""
+        return self._lanes[self._lane_key(lane)].stats()
+
     def waiting_prefix(self, lane: str) -> str:
         """Text to prepend to a progress message when the job must wait.
 

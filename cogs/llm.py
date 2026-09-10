@@ -5,7 +5,7 @@ import discord
 from discord import app_commands
 
 from bot import bot
-from core import config, log, ban_guard, check_cooldown, nsfw_blocked, schedule_message_deletion, reply_error, ASPECT_RATIO_CHOICES
+from core import config, log, ban_guard, check_cooldown, nsfw_blocked, schedule_message_deletion, reply_error, QueueWaitUpdater, ASPECT_RATIO_CHOICES
 from llm_client import fetch_llm_models, llm_model_load, probe_reasoning_efforts, llm_model_unload, call_llm, resolve_reasoning_effort
 from ui.autocomplete import llm_model_autocomplete
 from job_queue import job_queue
@@ -127,7 +127,30 @@ async def gen_prompt(interaction: discord.Interaction, prompt: str, megapixels: 
             # Unload the model (ignored on servers without the unload endpoint).
             await llm_model_unload(chosen_model)
 
-        await job_queue.submit(_gen_prompt_session(), lane="llm", name="gen_prompt")
+        session = _gen_prompt_session()
+        fut = job_queue.submit(session, lane="llm", name="gen_prompt")
+        waiter = QueueWaitUpdater(
+            msg, lane="llm", label="\U0001f9e0 Waiting to generate your prompt\u2026"
+        )
+        waiter.arm(session)
+
+        async def _watch_session():
+            # Retrieve the session future so a failure is never silently
+            # dropped: report it on the message the user is looking at and
+            # unload the model (the session only unloads itself on the
+            # success/timeout paths).
+            try:
+                await fut
+            except Exception as exc:
+                log.exception("gen_prompt session failed")
+                waiter.disarm()
+                await reply_error(
+                    interaction, f"\u274c Prompt generation failed: {exc}",
+                    target=state.get("followup_msg") or msg,
+                )
+                await llm_model_unload(chosen_model)
+
+        asyncio.create_task(_watch_session())
     except Exception as exc:
         log.exception("gen_prompt setup failed")
         await reply_error(interaction, f"\u274c Prompt generation failed: {exc}", target=msg)
