@@ -130,7 +130,7 @@ async def gen_prompt(interaction: discord.Interaction, prompt: str, megapixels: 
         session = _gen_prompt_session()
         fut = job_queue.submit(session, lane="llm", name="gen_prompt")
         waiter = QueueWaitUpdater(
-            msg, lane="llm", label="\U0001f9e0 Waiting to generate your prompt\u2026"
+            msg, lane="llm", label="\U0001f9e0 Waiting to generate your prompt (do not delete this message)\u2026"
         )
         waiter.arm(session)
 
