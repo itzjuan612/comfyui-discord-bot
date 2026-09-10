@@ -5,6 +5,15 @@
 comfyui:
   base_url: "http://localhost:8188"
 
+# Queueing: how resource-heavy work (ComfyUI generations + LLM /gen_prompt)
+# is scheduled.
+#   unified  -> one single serial queue; image generation and prompt
+#               generation never run at the same time (1 concurrent job).
+#   separate -> two parallel serial lanes: ComfyUI and LLM each run one job
+#               at a time, but the two can run concurrently (up to 2 jobs).
+queueing:
+  mode: unified
+
 # NSFW guardrail: refuse NSFW prompts unless run in a Discord-marked NSFW channel.
 nsfw:
   # Optional extra keywords beyond the built-in list.

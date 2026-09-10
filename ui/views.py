@@ -22,6 +22,7 @@ from core import (
 )
 from workflow import run_image, run_text_workflow
 from llm_client import call_llm, resolve_reasoning_effort, llm_model_unload
+from job_queue import job_queue
 
 
 class RetryButton(Button):
@@ -45,16 +46,19 @@ class RetryButton(Button):
             return
         stealth = bool(params.get("stealth", False))
         await interaction.response.send_message(
-            content="\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
         progress_msg = await interaction.original_response()
-        progress = ProgressUpdater(progress_msg)
+        progress = ProgressUpdater(progress_msg, lane="comfyui")
+        job = run_image(
+            params["spec"], on_progress=progress.update,
+            model_key=params["model"], **params["kwargs"]
+        )
+        fut = job_queue.submit(job, lane="comfyui", name=f"retry_{params['model']}")
+        progress.arm(job)
         try:
-            images, meta = await run_image(
-                params["spec"], on_progress=progress.update,
-                model_key=params["model"], **params["kwargs"]
-            )
+            images, meta = await fut
             progress.done = True
             for img in images:
                 if await nsfw_guard.check_image_nsfw(img, interaction):
@@ -144,10 +148,11 @@ class UpscaleModelButton(Button):
             return
         await interaction.response.defer(ephemeral=stealth)
         progress_msg = await interaction.followup.send(
-            content="\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
-        progress = ProgressUpdater(progress_msg)
+        progress = ProgressUpdater(progress_msg, lane="comfyui",
+                                   label="\U0001f3a8 Upscaling image\u2026")
         spec = config["models"].get(model, {}).get("upscale")
         if spec is None:
             progress.done = True
@@ -161,14 +166,17 @@ class UpscaleModelButton(Button):
         ckpt_name = view.ckpt_name if model == "sdxl" else None
         sampler = view.sampler if model == "sdxl" else None
         scheduler = view.scheduler if model == "sdxl" else None
+        job = run_image(
+            spec, on_progress=progress.update, model_key=model, prompt=None,
+            negative=negative, strength=None,
+            image_filename=view.uploaded_name, scale=2,
+            input_longest_side=view.input_longest_side,
+            ckpt_name=ckpt_name, sampler=sampler, scheduler=scheduler,
+        )
+        fut = job_queue.submit(job, lane="comfyui", name=f"{model}_upscale")
+        progress.arm(job)
         try:
-            images, meta = await run_image(
-                spec, on_progress=progress.update, model_key=model, prompt=None,
-                negative=negative, strength=None,
-                image_filename=view.uploaded_name, scale=2,
-                input_longest_side=view.input_longest_side,
-                ckpt_name=ckpt_name, sampler=sampler, scheduler=scheduler,
-            )
+            images, meta = await fut
             progress.done = True
             for img in images:
                 if await nsfw_guard.check_image_nsfw(img, interaction):
@@ -297,18 +305,22 @@ class CheckpointPickerView(View):
         # not re-check (re-checking would always fail and block the run).
         await interaction.response.defer(ephemeral=self.stealth)
         progress_msg = await interaction.followup.send(
-            content="\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=self.stealth,
         )
-        progress = ProgressUpdater(progress_msg)
+        progress = ProgressUpdater(progress_msg, lane="comfyui",
+                                   label="\U0001f3a8 Upscaling image\u2026")
+        job = run_image(
+            self.spec, on_progress=progress.update, model_key=self.model_key,
+            prompt=self.prompt, negative=self.negative, strength=self.strength,
+            image_filename=self.uploaded_name, scale=self.scale,
+            input_longest_side=self.input_longest_side,
+            ckpt_name=ckpt_name, sampler=self.sampler, scheduler=self.scheduler,
+        )
+        fut = job_queue.submit(job, lane="comfyui", name=f"{self.model_key}_upscale")
+        progress.arm(job)
         try:
-            images, meta = await run_image(
-                self.spec, on_progress=progress.update, model_key=self.model_key,
-                prompt=self.prompt, negative=self.negative, strength=self.strength,
-                image_filename=self.uploaded_name, scale=self.scale,
-                input_longest_side=self.input_longest_side,
-                ckpt_name=ckpt_name, sampler=self.sampler, scheduler=self.scheduler,
-            )
+            images, meta = await fut
             progress.done = True
             for img in images:
                 if await nsfw_guard.check_image_nsfw(img, interaction):
@@ -509,10 +521,11 @@ class EditImageModal(Modal):
 
         await interaction.response.defer(ephemeral=stealth)
         progress_msg = await interaction.followup.send(
-            content="\U0001f3a8 Editing image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Editing image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
-        progress = ProgressUpdater(progress_msg)
+        progress = ProgressUpdater(progress_msg, lane="comfyui",
+                                   label="\U0001f3a8 Editing image\u2026")
         log.info("Edit Image clicked for message %s", interaction.message.id)
 
         model = "flux2_klein"
@@ -556,7 +569,10 @@ class EditImageModal(Modal):
         }
 
         try:
-            images, meta = await run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
+            job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
+            fut = job_queue.submit(job, lane="comfyui", name="flux2_klein_i2i")
+            progress.arm(job)
+            images, meta = await fut
             progress.done = True
             for img in images:
                 if await nsfw_guard.check_image_nsfw(img, interaction):
@@ -636,14 +652,20 @@ class ThinkingView(View):
 
     The select lists only the reasoning-effort values the endpoint accepted
     during probing (HTTP 200), plus "API default", which sends no
-    reasoning_effort tag at all. Selecting an option runs the prompt
-    workflow and the LLM call.
+    reasoning_effort tag at all.
+
+    The view does NOT run the generation itself. Instead it stores the chosen
+    value and signals ``completion`` so the session job (which holds the LLM
+    lane for the whole session) can proceed with generation, or skip it on
+    timeout. This keeps the LLM lane occupied from model load through unload
+    so no other LLM job can start while the model is loaded.
     """
 
     def __init__(self, chosen_model: str, supported: list[str], prompt: str,
                  megapixels: int, aspect_ratio: str,
-                 max_tokens: int | None, temperature: float | None, llm_cfg: dict):
-        super().__init__(timeout=120)
+                 max_tokens: int | None, temperature: float | None, llm_cfg: dict,
+                 completion, state: dict):
+        super().__init__(timeout=30)
         self.chosen_model = chosen_model
         self.prompt = prompt
         self.megapixels = megapixels
@@ -651,6 +673,8 @@ class ThinkingView(View):
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.llm_cfg = llm_cfg
+        self.completion = completion
+        self.state = state
         options = [discord.SelectOption(label="API default", value="api_default")]
         options += [discord.SelectOption(label=e, value=e) for e in supported]
         self.add_item(ThinkingSelect(
@@ -661,72 +685,32 @@ class ThinkingView(View):
         ))
 
     async def handle_select(self, interaction: discord.Interaction, value: str):
+        # Record the user's choice and release the session job, which performs
+        # the actual generation and unload. Respond so Discord acknowledges
+        # the click. The follow-up "Generating prompt\u2026" message is stored
+        # in state so the session job can write the final result there instead
+        # of the picker message.
         self.stop()
-        await interaction.response.defer(ephemeral=True)
-        msg = await interaction.original_response()
+        self.state["selected_value"] = value
+        self.state["followup_msg"] = None
         try:
-            effort = await resolve_reasoning_effort(self.chosen_model, value, self.llm_cfg)
-            # The model was already loaded when the select menu was shown;
-            # don't load it again (each load needs a matching unload).
-            # v2 workflow composes the full prompt (system + aspect ratio +
-            # user idea) via string nodes and outputs it through PreviewAny
-            # node 111. The bot sends that composed prompt to the LLM itself,
-            # so the timeout is controlled by llm.timeout in config.yaml
-            # (300s) instead of the old hardcoded 30s.
-            patches = {
-                "191": {
-                    "aspect_ratio": normalize_aspect_ratio(self.aspect_ratio),
-                    "megapixels": int(self.megapixels),
-                },
-                "134:115": {
-                    "value": self.prompt,
-                },
-            }
-            composed_prompt = await run_text_workflow(
-                "workflows/ideogram_prompt_gen/ideogram4_prompt_gen.json",
-                patches,
-                target_node="111",
+            await interaction.response.defer(ephemeral=True)
+            self.state["followup_msg"] = await interaction.followup.send(
+                content="\U0001f9e0 Generating prompt\u2026", ephemeral=True
             )
-            result = await call_llm(
-                composed_prompt,
-                self.chosen_model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                reasoning_effort=effort,
-            )
-            if len(result) > 2000:
-                # Discord's message limit is 2000 chars; oversized prompts
-                # are delivered as an attached .txt file instead.
-                txt_file = discord.File(
-                    io.BytesIO(result.encode("utf-8")), filename="prompt.txt"
-                )
-                await msg.edit(
-                    content=(
-                        "\u26a0\ufe0f The generated prompt is longer than Discord's "
-                        "2000-character limit, so it can't be shown directly. "
-                        "It has been saved to the attached .txt file — copy the "
-                        "text inside that file instead."
-                    ),
-                    attachments=[txt_file],
-                )
-            else:
-                await msg.edit(content=result)
-        except Exception as exc:
-            log.exception("gen_prompt failed")
-            await reply_error(interaction, f"\u274c Prompt generation failed: {exc}", target=msg)
-        finally:
-            # Free memory once the prompt is done (ignored on servers without
-            # the unload endpoint).
-            await llm_model_unload(self.chosen_model)
+        except Exception:
+            self.state["followup_msg"] = None
+        self.completion.set()
 
     async def on_timeout(self):
-        # The model was loaded when this view was shown; free it since no
-        # prompt will be generated.
-        await llm_model_unload(self.chosen_model)
-        try:
-            await self.message.edit(content="\u23f3 Reasoning-effort selection expired; prompt generation cancelled.")
-        except Exception:
-            pass
+        # No reasoning effort was chosen; signal the session job so it can post
+        # the "ran out of time" message on the picker and unload the model to
+        # free the LLM lane. (Messaging is done by the session job because it
+        # holds a reliable reference to the picker message.)
+        self.stop()
+        self.state["selected_value"] = None
+        self.state["followup_msg"] = None
+        self.completion.set()
 
 
 class ThinkingSelect(Select):
