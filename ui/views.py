@@ -256,7 +256,7 @@ class CheckpointPickerView(View):
         # "default" maps to the workflow's own checkpoint (with automatic
         # fallback to an available SDXL checkpoint in run_image).
         options = [discord.SelectOption(label="Default (workflow checkpoint)", value="default")]
-        options += [discord.SelectOption(label=c, value=c) for c in checkpoints[:100]]
+        options += [discord.SelectOption(label=c, value=c) for c in checkpoints[:24]]
         self.add_item(CheckpointSelect(
             placeholder="Select a checkpoint",
             options=options,
