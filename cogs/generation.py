@@ -663,6 +663,12 @@ async def img2img(interaction: discord.Interaction, workflow: str,
         log.exception("img2img failed")
         await reply_error(interaction, f"\u274c Image-to-image failed: {exc}", target=progress_msg)
 @bot.tree.command(name="flush", description="Unload all models and execution cache from ComfyUI")
+    if not can_manage(interaction.user.id):
+        await interaction.response.send_message(
+            content="\u26a0\ufe0f Only the bot owner and admins can flush ComfyUI memory.",
+            ephemeral=True,
+        )
+        return
 async def flush(interaction: discord.Interaction):
     await interaction.response.defer()
     log = logging.getLogger("bot")
