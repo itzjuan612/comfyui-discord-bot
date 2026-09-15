@@ -8,11 +8,12 @@ from discord import app_commands
 from bot import bot
 from http_session import get_session
 from core import (
-    config, comfy, log, user_settings, generation_store, nsfw_guard, moderation,
-    compress_image, meta_lines, image_resolution, uuid_hex,
-    reply_error, ban_guard, check_cooldown, nsfw_blocked,
-    schedule_message_deletion, schedule_original_response_deletion,
-    ProgressUpdater, progress_bar, normalize_aspect_ratio,
+    config, comfy, log, user_settings,
+    image_resolution, uuid_hex,
+    reply_error, ban_guard, check_cooldown, nsfw_blocked, can_manage,
+    deliver_generation,
+    schedule_message_deletion,
+    ProgressUpdater, normalize_aspect_ratio,
     UPSCALE_CHOICES, ASPECT_RATIO_CHOICES, QUALITY_CHOICES,
     SAMPLER_CHOICES, SCHEDULER_CHOICES, I2I_WORKFLOW_CHOICES,
     ComfyUIError,
@@ -50,17 +51,6 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
         images, meta = await fut
         progress.done = True
         log.info("%s: got %d images", model, len(images))
-        for img in images:
-            if await nsfw_guard.check_image_nsfw(img, interaction):
-                await interaction.edit_original_response(
-                    content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
-                )
-                schedule_original_response_deletion(interaction)
-                return
-        files = []
-        for i, img in enumerate(images):
-            img_bytes, ext = compress_image(img)
-            files.append(discord.File(io.BytesIO(img_bytes), filename=f"{model}_t2i_{i}{ext}"))
         display_model = meta.get("ckpt_name") or gen_kwargs.get("ckpt_name") or model
         base_lines = [f"**Model:** {display_model}", f"**Prompt:** {prompt}"]
         if model == "ideogram":
@@ -80,22 +70,17 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
         else:
             base_lines.append(f"**Resolution:** {image_resolution(images[0])}")
         base_desc = "\n".join(base_lines)
-        embed = discord.Embed(
-            description=base_desc + "\n" + "\n".join(meta_lines(meta)),
-            color=discord.Color.blue(),
-        )
-        response_msg = await interaction.edit_original_response(content="", embed=embed, attachments=files, view=GenerationView(stealth=stealth))
-        generation_store.save(response_msg.id, {
-            "spec": spec, "model": model, "suffix": "t2i", "stealth": stealth,
-            "embed_desc": base_desc, "embed_color": int(embed.color),
-            "user_id": interaction.user.id,
+        await deliver_generation(
+            interaction, images=images, meta=meta, base_desc=base_desc,
+            color=int(discord.Color.blue()), spec=spec, model=model,
+            suffix="t2i", stealth=stealth,
             # seed=None so Retry rolls a fresh seed and produces a new image.
             # sampler/scheduler recorded so an SDXL upscale can reuse them.
-            "kwargs": {**gen_kwargs, "seed": None,
-                        "sampler": meta.get("sampler"),
-                        "scheduler": meta.get("scheduler")},
-        })
-    except (ComfyUIError, Exception) as exc:
+            save_kwargs={**gen_kwargs, "seed": None,
+                         "sampler": meta.get("sampler"),
+                         "scheduler": meta.get("scheduler")},
+        )
+    except Exception as exc:
         progress.done = True
         log.exception("generation failed")
         await reply_error(interaction, f"\u274c Generation failed: {exc}")
@@ -511,37 +496,21 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
         progress.arm(job)
         images, meta = await fut
         progress.done = True
-        for img in images:
-            if await nsfw_guard.check_image_nsfw(img, interaction):
-                await interaction.edit_original_response(
-                    content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
-                )
-                schedule_original_response_deletion(interaction)
-                return
-        files = []
-        for i, img in enumerate(images):
-            img_bytes, ext = compress_image(img)
-            files.append(discord.File(io.BytesIO(img_bytes), filename=f"{model}_upscale_{i}{ext}"))
         base_desc = (
             f"**Model:** {model}"
             + (f"\n**Scale:** {scale:g}x" if scale is not None else "")
             + f"\n**Resolution:** {image_resolution(images[0])}"
         )
-        embed = discord.Embed(
-            description=base_desc + "\n" + "\n".join(meta_lines(meta)),
-            color=discord.Color.green(),
-        )
-        response_msg = await interaction.edit_original_response(content="", embed=embed, attachments=files, view=GenerationView(stealth=stealth))
-        generation_store.save(response_msg.id, {
-            "spec": spec, "model": model, "suffix": "upscale", "stealth": stealth,
-            "embed_desc": base_desc, "embed_color": int(embed.color),
-            "user_id": interaction.user.id,
+        await deliver_generation(
+            interaction, images=images, meta=meta, base_desc=base_desc,
+            color=int(discord.Color.green()), spec=spec, model=model,
+            suffix="upscale", stealth=stealth,
             # Retries reuse the uploaded input image and roll a fresh seed.
-            "kwargs": {"prompt": prompt, "negative": negative, "strength": strength,
-                       "image_filename": uploaded_name, "scale": scale,
-                       "input_longest_side": input_longest_side},
-        })
-    except (ComfyUIError, Exception) as exc:
+            save_kwargs={"prompt": prompt, "negative": negative, "strength": strength,
+                         "image_filename": uploaded_name, "scale": scale,
+                         "input_longest_side": input_longest_side},
+        )
+    except Exception as exc:
         # progress is only bound on the non-sdxl path; guard so an error in the
         # sdxl branch (which returns early) doesn't raise UnboundLocalError.
         try:
@@ -669,28 +638,18 @@ async def img2img(interaction: discord.Interaction, workflow: str,
         progress.arm(job)
         images, meta = await fut
         progress.done = True
-        for img in images:
-            if await nsfw_guard.check_image_nsfw(img, interaction):
-                await interaction.edit_original_response(
-                    content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
-                )
-                schedule_original_response_deletion(interaction)
-                return
-        files = []
-        for i, img in enumerate(images):
-            img_bytes, ext = compress_image(img)
-            files.append(discord.File(io.BytesIO(img_bytes), filename=f"flux2_klein_i2i_{i}{ext}"))
         workflow_label = "1 image (edit)" if workflow == "single" else "2 images (combine)"
         base_lines = [
             f"**Model:** {model}",
             f"**Workflow:** {workflow_label}",
             f"**Prompt:** {prompt}",
             f"**Resolution:** {image_resolution(images[0])}",
-        ]
-        base_desc = "\n".join(base_lines)
-        embed = discord.Embed(
-            description=base_desc + "\n" + "\n".join(meta_lines(meta)),
-            color=discord.Color.orange(),
+        ])
+        await deliver_generation(
+            interaction, images=images, meta=meta, base_desc=base_desc,
+            color=int(discord.Color.orange()), spec=spec, model=model,
+            suffix="i2i", stealth=stealth,
+            save_kwargs={**gen_kwargs, "seed": None},
         )
         response_msg = await interaction.edit_original_response(content="", embed=embed, attachments=files, view=GenerationView(stealth=stealth))
         generation_store.save(response_msg.id, {

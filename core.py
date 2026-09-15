@@ -542,3 +542,44 @@ def meta_lines(meta: dict) -> list[str]:
     if meta.get("scheduler") is not None:
         lines.append(f"**Scheduler:** {meta['scheduler']}")
     return lines
+
+
+async def deliver_generation(interaction, *, images, meta, base_desc, color,
+                             spec, model, suffix, stealth, save_kwargs,
+                             target=None):
+    """Shared post-generation pipeline used by every output path.
+
+    Runs the NSFW image gate, compresses images to Discord-safe uploads,
+    replaces the progress message with the result embed + buttons, and
+    persists the retry parameters in generation_store under the new
+    message id. ``target`` is the follow-up message to edit (button/picker
+    flows); when None, the interaction's original response is edited.
+    """
+    from ui.views import GenerationView  # lazy: ui.views imports this module
+    blocked = "\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
+    for img in images:
+        if await nsfw_guard.check_image_nsfw(img, interaction):
+            if target is None:
+                await interaction.edit_original_response(content=blocked)
+                schedule_original_response_deletion(interaction)
+            else:
+                msg = await target.edit(content=blocked)
+                schedule_message_deletion(msg)
+            return
+    files = []
+    for i, img in enumerate(images):
+        img_bytes, ext = compress_image(img)
+        files.append(discord.File(io.BytesIO(img_bytes), filename=f"{model}_{suffix}_{i}{ext}"))
+    embed = discord.Embed(
+        description=base_desc + "\n" + "\n".join(meta_lines(meta)),
+        color=discord.Color(color),
+    )
+    edit = interaction.edit_original_response if target is None else target.edit
+    response_msg = await edit(content="", embed=embed, attachments=files,
+                              view=GenerationView(stealth=stealth))
+    generation_store.save(response_msg.id, {
+        "spec": spec, "model": model, "suffix": suffix, "stealth": stealth,
+        "embed_desc": base_desc, "embed_color": int(embed.color),
+        "user_id": interaction.user.id,
+        "kwargs": save_kwargs,
+    })
