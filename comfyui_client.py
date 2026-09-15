@@ -18,13 +18,13 @@ class ComfyUIError(Exception):
 class ComfyUIClient:
     """Async client for the ComfyUI HTTP API."""
 
-    # How long a checkpoint list stays fresh before re-querying ComfyUI.
-    CHECKPOINT_CACHE_TTL = 60.0
+    # How long a model listing stays fresh before re-querying ComfyUI.
+    MODEL_LIST_CACHE_TTL = 60.0
 
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
-        self._ckpt_cache: list[str] | None = None
-        self._ckpt_cache_time: float = 0.0
+        # folder -> (names, monotonic fetch time) for /models/{folder} listings.
+        self._list_cache: dict[str, tuple[list[str], float]] = {}
 
     async def queue_prompt(self, workflow: dict) -> tuple[str, str]:
         """Queue a workflow (dict of nodes).
@@ -177,65 +177,52 @@ class ComfyUIClient:
                 except asyncio.CancelledError:
                     pass
 
+    async def _fetch_model_list(self, folder: str, force: bool = False) -> list[str]:
+        """List files in a ComfyUI models folder, with a TTL cache.
+
+        The result is cached for ``MODEL_LIST_CACHE_TTL`` seconds so repeated
+        calls (autocomplete keystrokes, availability checks, fallbacks) don't
+        hammer ComfyUI. Pass ``force=True`` to bypass the cache and refresh
+        immediately.
+        """
+        now = time.monotonic()
+        cached = self._list_cache.get(folder)
+        if not force and cached is not None and now - cached[1] < self.MODEL_LIST_CACHE_TTL:
+            return cached[0]
+        session = get_session()
+        async with session.get(f"{self.base_url}/models/{folder}") as resp:
+            if resp.status != 200:
+                raise ComfyUIError(f"Could not list {folder} (HTTP {resp.status})")
+            data = await resp.json()
+        # ComfyUI's GET /models/{folder} returns a bare JSON array of plain
+        # filename strings (e.g. ["SDXL.safetensors", "flux.safetensors"]).
+        # Tolerate a dict wrapper and dict items for forward compatibility.
+        items = data.get(folder) if isinstance(data, dict) else data
+        names = []
+        for item in items or []:
+            if isinstance(item, str):
+                names.append(item)
+            elif isinstance(item, dict) and "name" in item:
+                names.append(item["name"])
+        self._list_cache[folder] = (names, time.monotonic())
+        return names
+
     async def fetch_loras(self, force: bool = False) -> list[str]:
         """List LoRA files available in ComfyUI's models/loras folder."""
-        session = get_session()
-        async with session.get(f"{self.base_url}/models/loras") as resp:
-            if resp.status != 200:
-                raise ComfyUIError(f"Could not list LoRAs (HTTP {resp.status})")
-            data = await resp.json()
-        items = data.get("loras") if isinstance(data, dict) else data
-        return [item for item in items if isinstance(item, str)]
+        return await self._fetch_model_list("loras", force=force)
 
-    async def fetch_diffusion_models(self) -> list[str]:
+    async def fetch_diffusion_models(self, force: bool = False) -> list[str]:
         """List model files available in ComfyUI's models/diffusion_models folder.
 
         Unlike checkpoints, diffusion models (UNet/DiT files such as the
         Z-Image turbo model) live in their own folder, so a dedicated fetcher
         is needed for autocomplete and availability checks.
         """
-        session = get_session()
-        async with session.get(f"{self.base_url}/models/diffusion_models") as resp:
-            if resp.status != 200:
-                raise ComfyUIError(f"Could not list diffusion models (HTTP {resp.status})")
-            data = await resp.json()
-        items = data.get("diffusion_models") if isinstance(data, dict) else data
-        names = []
-        for item in items:
-            if isinstance(item, str):
-                names.append(item)
-            elif isinstance(item, dict) and "name" in item:
-                names.append(item["name"])
-        return names
+        return await self._fetch_model_list("diffusion_models", force=force)
 
     async def fetch_checkpoints(self, force: bool = False) -> list[str]:
-        """List checkpoint files available in ComfyUI's models/checkpoints folder.
-
-        The result is cached for ``CHECKPOINT_CACHE_TTL`` seconds so repeated
-        calls (e.g. one per generation) don't hammer ComfyUI. Pass
-        ``force=True`` to bypass the cache and refresh immediately.
-        """
-        now = time.monotonic()
-        if not force and self._ckpt_cache is not None and now - self._ckpt_cache_time < self.CHECKPOINT_CACHE_TTL:
-            return self._ckpt_cache
-        session = get_session()
-        async with session.get(f"{self.base_url}/models/checkpoints") as resp:
-            if resp.status != 200:
-                raise ComfyUIError(f"Could not list checkpoints (HTTP {resp.status})")
-            data = await resp.json()
-        # ComfyUI's GET /models/{folder} returns a bare JSON array of plain
-        # filename strings (e.g. ["SDXL.safetensors", "flux.safetensors"]).
-        # Tolerate a dict wrapper and dict items for forward compatibility.
-        items = data.get("checkpoints") if isinstance(data, dict) else data
-        names = []
-        for item in items:
-            if isinstance(item, str):
-                names.append(item)
-            elif isinstance(item, dict) and "name" in item:
-                names.append(item["name"])
-        self._ckpt_cache = names
-        self._ckpt_cache_time = time.monotonic()
-        return self._ckpt_cache
+        """List checkpoint files available in ComfyUI's models/checkpoints folder."""
+        return await self._fetch_model_list("checkpoints", force=force)
 
     async def free_memory(self) -> None:
         """Ask ComfyUI to unload all loaded models, freeing VRAM and RAM.

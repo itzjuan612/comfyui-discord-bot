@@ -1,10 +1,10 @@
+import asyncio
 import io
 import os
 import subprocess
 import sys
 import logging
 
-from http_session import get_session
 from PIL import Image
 import discord
 from discord.ui import View, Button, Modal, TextInput, Select
@@ -12,12 +12,13 @@ from discord.enums import TextStyle
 
 from bot import bot
 from core import (
-    config, comfy, log, nsfw_guard, generation_store, user_settings, moderation,
+    config, comfy, log, generation_store, user_settings, moderation,
     BOT_OWNER_ID, SAMPLER_NAMES, UPSCALE_MODELS, UPSCALE_MODEL_LABELS,
-    compress_image, image_resolution, meta_lines, uuid_hex,
-    reply_error, ban_guard, check_cooldown, can_manage, is_owner,
+    image_resolution, uuid_hex,
+    reply_error, ban_guard, check_cooldown, can_manage, is_owner, download_image,
+    nsfw_blocked, deliver_generation,
     schedule_message_deletion, schedule_original_response_deletion,
-    ProgressUpdater, progress_bar, normalize_aspect_ratio,
+    ProgressUpdater,
     _parse_opt_float, _parse_opt_int, _parse_opt_str,
 )
 from workflow import run_image, run_text_workflow
@@ -44,6 +45,17 @@ class RetryButton(Button):
                 content="\u23f3 Please wait before retrying.", ephemeral=True
             )
             return
+        # The stored prompt was gated when originally generated, but the
+        # channel may not be NSFW-marked anymore; re-check before GPU work.
+        saved_prompt = params.get("kwargs", {}).get("prompt")
+        if saved_prompt and nsfw_blocked(interaction, saved_prompt):
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
+            )
+            msg = await interaction.original_response()
+            schedule_message_deletion(msg)
+            return
         stealth = bool(params.get("stealth", False))
         await interaction.response.send_message(
             content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
@@ -60,29 +72,16 @@ class RetryButton(Button):
         try:
             images, meta = await fut
             progress.done = True
-            for img in images:
-                if await nsfw_guard.check_image_nsfw(img, interaction):
-                    await interaction.edit_original_response(
-                        content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
-                    )
-                    schedule_original_response_deletion(interaction)
-                    return
-            files = []
-            for i, img in enumerate(images):
-                img_bytes, ext = compress_image(img)
-                files.append(discord.File(io.BytesIO(img_bytes), filename=f"{params['model']}_{params['suffix']}_{i}{ext}"))
-            embed = discord.Embed(
-                description=params["embed_desc"] + "\n" + "\n".join(meta_lines(meta)),
-                color=discord.Color(params["embed_color"]),
-            )
             # Edit the progress message in place so the output replaces it.
-            response_msg = await interaction.edit_original_response(
-                content="", embed=embed, attachments=files, view=GenerationView(stealth=stealth)
+            # deliver_generation persists the params under the new message id,
+            # tagged with the clicking user so only they can delete the output.
+            await deliver_generation(
+                interaction, images=images, meta=meta,
+                base_desc=params["embed_desc"], color=params["embed_color"],
+                spec=params["spec"], model=params["model"],
+                suffix=params["suffix"], stealth=stealth,
+                save_kwargs=params["kwargs"],
             )
-            # Persist the params under the message id so it can itself be retried/deleted.
-            # Tag with the generating user so only that user can delete the output.
-            params["user_id"] = interaction.user.id
-            generation_store.save(response_msg.id, params)
         except Exception as exc:
             progress.done = True
             log.exception("retry failed")
@@ -108,10 +107,11 @@ class DeleteButton(Button):
                 )
                 return
         await interaction.response.defer()
-        generation_store.pop(interaction.message.id)
+        deleted = True
         try:
             await interaction.message.delete()
         except discord.Forbidden:
+            deleted = False
             log.warning(
                 "Delete failed for message %s: missing Manage Messages permission",
                 interaction.message.id,
@@ -125,6 +125,11 @@ class DeleteButton(Button):
                 "Message %s was already deleted",
                 interaction.message.id,
             )
+        # Only drop the stored retry params once the message is actually gone
+        # (NotFound counts: the entry is then orphaned). On Forbidden, keep
+        # them so the retry buttons keep working.
+        if deleted:
+            generation_store.pop(interaction.message.id)
 
 
 class UpscaleModelButton(Button):
@@ -178,42 +183,24 @@ class UpscaleModelButton(Button):
         try:
             images, meta = await fut
             progress.done = True
-            for img in images:
-                if await nsfw_guard.check_image_nsfw(img, interaction):
-                    msg = await progress_msg.edit(
-                        content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
-                    )
-                    schedule_message_deletion(msg)
-                    return
-            files = []
-            for i, img in enumerate(images):
-                img_bytes, ext = compress_image(img)
-                files.append(discord.File(io.BytesIO(img_bytes), filename=f"{model}_upscale_{i}{ext}"))
             display_ckpt = meta.get("ckpt_name") or ckpt_name
             base_desc = f"**Model:** {model}\n**Scale:** 2x"
             if model == "sdxl" and display_ckpt:
                 base_desc += f"\n**Checkpoint:** {display_ckpt}"
             base_desc += f"\n**Resolution:** {image_resolution(images[0])}"
-            embed = discord.Embed(
-                description=base_desc + "\n" + "\n".join(meta_lines(meta)),
-                color=discord.Color.green(),
-            )
             # Edit the progress (follow-up) message, NOT the ephemeral
             # model-picker message, so the output is visible to everyone.
-            response_msg = await progress_msg.edit(
-                content="", embed=embed, attachments=files, view=GenerationView(stealth=stealth)
-            )
-            generation_store.save(response_msg.id, {
-                "spec": spec, "model": model, "suffix": "upscale", "stealth": stealth,
-                "embed_desc": base_desc, "embed_color": int(embed.color),
-                "user_id": interaction.user.id,
+            await deliver_generation(
+                interaction, images=images, meta=meta, base_desc=base_desc,
+                color=int(discord.Color.green()), spec=spec, model=model,
+                suffix="upscale", stealth=stealth, target=progress_msg,
                 # Retries reuse the uploaded input image and roll a fresh seed.
-                "kwargs": {"prompt": None, "negative": negative, "strength": None,
-                            "image_filename": view.uploaded_name, "scale": 2,
-                            "input_longest_side": view.input_longest_side,
-                            "ckpt_name": ckpt_name, "sampler": sampler,
-                            "scheduler": scheduler},
-            })
+                save_kwargs={"prompt": None, "negative": negative, "strength": None,
+                             "image_filename": view.uploaded_name, "scale": 2,
+                             "input_longest_side": view.input_longest_side,
+                             "ckpt_name": ckpt_name, "sampler": sampler,
+                             "scheduler": scheduler},
+            )
         except Exception as exc:
             progress.done = True
             logging.getLogger("bot").exception("upscale failed")
@@ -286,7 +273,7 @@ class CheckpointPickerView(View):
         # "default" maps to the workflow's own checkpoint (with automatic
         # fallback to an available SDXL checkpoint in run_image).
         options = [discord.SelectOption(label="Default (workflow checkpoint)", value="default")]
-        options += [discord.SelectOption(label=c, value=c) for c in checkpoints[:100]]
+        options += [discord.SelectOption(label=c, value=c) for c in checkpoints[:24]]
         self.add_item(CheckpointSelect(
             placeholder="Select a checkpoint",
             options=options,
@@ -296,6 +283,16 @@ class CheckpointPickerView(View):
 
     async def handle_select(self, interaction: discord.Interaction, value: str):
         if await ban_guard(interaction):
+            return
+        # The /upscale prompt was gated at command time, but the channel's
+        # NSFW marking may have changed while the picker was open.
+        if self.prompt and nsfw_blocked(interaction, self.prompt):
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
+            )
+            msg = await interaction.original_response()
+            schedule_message_deletion(msg)
             return
         self.stop()
         ckpt_name = None if value == "default" else value
@@ -322,17 +319,6 @@ class CheckpointPickerView(View):
         try:
             images, meta = await fut
             progress.done = True
-            for img in images:
-                if await nsfw_guard.check_image_nsfw(img, interaction):
-                    msg = await progress_msg.edit(
-                        content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
-                    )
-                    schedule_message_deletion(msg)
-                    return
-            files = []
-            for i, img in enumerate(images):
-                img_bytes, ext = compress_image(img)
-                files.append(discord.File(io.BytesIO(img_bytes), filename=f"{self.model_key}_upscale_{i}{ext}"))
             display_ckpt = meta.get("ckpt_name") or ckpt_name
             base_desc = (
                 f"**Model:** {self.model_key}"
@@ -340,22 +326,20 @@ class CheckpointPickerView(View):
                 + (f"\n**Scale:** {self.scale:g}x" if self.scale is not None else "")
                 + f"\n**Resolution:** {image_resolution(images[0])}"
             )
-            embed = discord.Embed(
-                description=base_desc + "\n" + "\n".join(meta_lines(meta)),
-                color=discord.Color.green(),
+            await deliver_generation(
+                interaction, images=images, meta=meta, base_desc=base_desc,
+                color=int(discord.Color.green()), spec=self.spec,
+                model=self.model_key, suffix="upscale", stealth=self.stealth,
+                target=progress_msg,
+                save_kwargs={"prompt": self.prompt, "negative": self.negative,
+                             "strength": self.strength,
+                             "image_filename": self.uploaded_name,
+                             "scale": self.scale,
+                             "input_longest_side": self.input_longest_side,
+                             "ckpt_name": ckpt_name,
+                             "sampler": self.sampler,
+                             "scheduler": self.scheduler},
             )
-            response_msg = await progress_msg.edit(
-                content="", embed=embed, attachments=files, view=GenerationView(stealth=self.stealth)
-            )
-            generation_store.save(response_msg.id, {
-                "spec": self.spec, "model": self.model_key, "suffix": "upscale", "stealth": self.stealth,
-                "embed_desc": base_desc, "embed_color": int(embed.color),
-                "user_id": interaction.user.id,
-                "kwargs": {"prompt": self.prompt, "negative": self.negative, "strength": self.strength,
-                            "image_filename": self.uploaded_name, "scale": self.scale,
-                            "input_longest_side": self.input_longest_side, "ckpt_name": ckpt_name,
-                            "sampler": self.sampler, "scheduler": self.scheduler},
-            })
         except Exception as exc:
             progress.done = True
             logging.getLogger("bot").exception("checkpoint upscale failed")
@@ -417,10 +401,7 @@ class UpscaleButton(Button):
             return
         source = image_attachments[0]
         try:
-            session = get_session()
-            async with session.get(source.url) as resp:
-                resp.raise_for_status()
-                data = await resp.read()
+            data = await download_image(source.url)
         except Exception as exc:
             log.warning("Could not download source image: %s", exc)
             await interaction.response.send_message(
@@ -503,6 +484,15 @@ class EditImageModal(Modal):
             )
             return
 
+        if nsfw_blocked(interaction, prompt):
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
+            )
+            msg = await interaction.original_response()
+            schedule_message_deletion(msg)
+            return
+
         if not await check_cooldown(interaction):
             await interaction.response.send_message(
                 content="\u23f3 Please wait before requesting another image.", ephemeral=True
@@ -547,10 +537,7 @@ class EditImageModal(Modal):
             megapixels = saved.get("img2img_megapixels")
 
         try:
-            session = get_session()
-            async with session.get(image_attachments[0].url) as resp:
-                resp.raise_for_status()
-                data1 = await resp.read()
+            data1 = await download_image(image_attachments[0].url)
             uploaded1 = await comfy.upload_image(data1, f"discord_{uuid_hex()}.png")
         except Exception as exc:
             progress.done = True
@@ -574,37 +561,19 @@ class EditImageModal(Modal):
             progress.arm(job)
             images, meta = await fut
             progress.done = True
-            for img in images:
-                if await nsfw_guard.check_image_nsfw(img, interaction):
-                    msg = await progress_msg.edit(
-                        content="\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
-                    )
-                    schedule_message_deletion(msg)
-                    return
-            files = []
-            for i, img in enumerate(images):
-                img_bytes, ext = compress_image(img)
-                files.append(discord.File(io.BytesIO(img_bytes), filename=f"flux2_klein_i2i_{i}{ext}"))
             base_lines = [
                 f"**Model:** {model}",
-                f"**Workflow:** 1 image (edit)",
-                f"**Prompt:** {prompt}",
+                "**Workflow:** 1 image (edit)",
+                f"**Prompt:** {prompt[:3800]}",
                 f"**Resolution:** {image_resolution(images[0])}",
             ]
             base_desc = "\n".join(base_lines)
-            embed = discord.Embed(
-                description=base_desc + "\n" + "\n".join(meta_lines(meta)),
-                color=discord.Color.green(),
+            await deliver_generation(
+                interaction, images=images, meta=meta, base_desc=base_desc,
+                color=int(discord.Color.green()), spec=spec, model=model,
+                suffix="i2i", stealth=stealth, target=progress_msg,
+                save_kwargs={**gen_kwargs, "seed": None},
             )
-            response_msg = await progress_msg.edit(
-                content="", embed=embed, attachments=files, view=GenerationView(stealth=stealth)
-            )
-            generation_store.save(response_msg.id, {
-                "spec": spec, "model": model, "suffix": "i2i", "stealth": stealth,
-                "embed_desc": base_desc, "embed_color": int(embed.color),
-                "user_id": interaction.user.id,
-                "kwargs": {**gen_kwargs, "seed": None},
-            })
         except Exception as exc:
             progress.done = True
             log.exception("Edit Image failed")
@@ -763,10 +732,14 @@ class RestartButton(Button):
             content="\U0001f504 Restarting the bot\u2026", ephemeral=True
         )
         log.info("Restart requested by %s", interaction.user.id)
-        # Spawn a fresh process with the same argv, then exit immediately.
-        command = [sys.executable, os.path.abspath(sys.argv[0])] + sys.argv[1:]
-        subprocess.Popen(command, cwd=os.path.dirname(os.path.abspath(__file__)))
-        os._exit(0)
+        # Spawn a fresh process with the same argv, from the project root
+        # (workflow JSON paths and the *.db files are resolved relative to it),
+        # then close the bot gracefully so websockets/aiohttp shut down cleanly;
+        # main.py's finally-block runs the remaining session cleanup.
+        script = os.path.abspath(sys.argv[0])
+        command = [sys.executable, script] + sys.argv[1:]
+        subprocess.Popen(command, cwd=os.path.dirname(script))
+        asyncio.create_task(bot.close())
 
 
 class ManageAdminsButton(Button):

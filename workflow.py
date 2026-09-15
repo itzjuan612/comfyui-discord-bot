@@ -241,7 +241,33 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
                 workflow[scale_id_str]["inputs"][spec.get("scale_key", "scale_by")] = value
 
 
+# Runtime GPU-safety bounds. Command decorators use app_commands.Range for
+# immediate user-facing errors, but values coming from /settings, persisted
+# retry params, and older messages all funnel through here.
+_KW_BOUNDS = {
+    "steps": (1, 150),
+    "width": (64, 4096),
+    "height": (64, 4096),
+    "cfg": (0.5, 20.0),
+    "batch_size": (1, 8),
+    "megapixels": (1, 8),
+    "scale": (1.0, 4.0),
+}
+
+
+def _clamp_kwargs(kwargs: dict) -> None:
+    for key, (low, high) in _KW_BOUNDS.items():
+        value = kwargs.get(key)
+        if value is None:
+            continue
+        clamped = max(low, min(high, value))
+        if clamped != value:
+            log.warning("Clamping %s=%s to %s", key, value, clamped)
+            kwargs[key] = clamped
+
+
 async def run_image(spec: dict, on_progress=None, **kwargs):
+    _clamp_kwargs(kwargs)
     if kwargs.get("seed") is None:
         kwargs["seed"] = random.randint(0, 2**32 - 1)
 
@@ -351,5 +377,16 @@ async def run_text_workflow(file_path: str, patches: dict, target_node: str | No
     for node_id, inputs in patches.items():
         for key, value in inputs.items():
             workflow[str(node_id)]["inputs"][key] = value
-    prompt_id, _client_id = await comfy.queue_prompt(workflow)
-    return await comfy.wait_for_output_text(prompt_id, target_node=target_node)
+    async def _run() -> str:
+        prompt_id, _client_id = await comfy.queue_prompt(workflow)
+        return await comfy.wait_for_output_text(prompt_id, target_node=target_node)
+
+    # Text workflows occupy ComfyUI's GPU. Their callers (gen_prompt) hold the
+    # LLM lane, so in "separate" mode this work would run concurrently with
+    # image jobs on the comfyui lane and race their free_memory calls; route it
+    # through that lane so all ComfyUI execution stays serial. In unified mode
+    # everything already shares one lane.
+    from job_queue import job_queue
+    if job_queue.mode == "separate":
+        return await job_queue.submit(_run(), lane="comfyui", name="prompt_gen_workflow")
+    return await _run()

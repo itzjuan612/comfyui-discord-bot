@@ -21,6 +21,7 @@ log = logging.getLogger("bot")
 
 from comfyui_client import ComfyUIClient, ComfyUIError
 from config_loader import load_config
+from http_session import get_session
 import user_settings
 import generation_store
 import nsfw_guard
@@ -493,6 +494,21 @@ def uuid_hex() -> str:
 
 
 DISCORD_IMAGE_LIMIT = 18 * 1024 * 1024  # Stay comfortably under Discord's ~20 MB upload limit
+ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024  # Hard cap for inbound attachments
+
+
+async def download_image(url) -> bytes:
+    """Download a Discord attachment, checking it really is a reasonably-sized image."""
+    session = get_session()
+    async with session.get(str(url)) as resp:
+        resp.raise_for_status()
+        ctype = resp.headers.get("Content-Type", "")
+        if ctype and not ctype.startswith("image/"):
+            raise ValueError(f"attachment is not an image (Content-Type: {ctype})")
+        data = await resp.read()
+    if len(data) > ATTACHMENT_MAX_BYTES:
+        raise ValueError(f"attachment exceeds the {ATTACHMENT_MAX_BYTES // (1024 * 1024)} MB limit")
+    return data
 
 
 def compress_image(data: bytes) -> tuple[bytes, str]:
@@ -542,3 +558,44 @@ def meta_lines(meta: dict) -> list[str]:
     if meta.get("scheduler") is not None:
         lines.append(f"**Scheduler:** {meta['scheduler']}")
     return lines
+
+
+async def deliver_generation(interaction, *, images, meta, base_desc, color,
+                             spec, model, suffix, stealth, save_kwargs,
+                             target=None):
+    """Shared post-generation pipeline used by every output path.
+
+    Runs the NSFW image gate, compresses images to Discord-safe uploads,
+    replaces the progress message with the result embed + buttons, and
+    persists the retry parameters in generation_store under the new
+    message id. ``target`` is the follow-up message to edit (button/picker
+    flows); when None, the interaction's original response is edited.
+    """
+    from ui.views import GenerationView  # lazy: ui.views imports this module
+    blocked = "\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
+    for img in images:
+        if await nsfw_guard.check_image_nsfw(img, interaction):
+            if target is None:
+                await interaction.edit_original_response(content=blocked)
+                schedule_original_response_deletion(interaction)
+            else:
+                msg = await target.edit(content=blocked)
+                schedule_message_deletion(msg)
+            return
+    files = []
+    for i, img in enumerate(images):
+        img_bytes, ext = compress_image(img)
+        files.append(discord.File(io.BytesIO(img_bytes), filename=f"{model}_{suffix}_{i}{ext}"))
+    embed = discord.Embed(
+        description=base_desc + "\n" + "\n".join(meta_lines(meta)),
+        color=discord.Color(color),
+    )
+    edit = interaction.edit_original_response if target is None else target.edit
+    response_msg = await edit(content="", embed=embed, attachments=files,
+                              view=GenerationView(stealth=stealth))
+    generation_store.save(response_msg.id, {
+        "spec": spec, "model": model, "suffix": suffix, "stealth": stealth,
+        "embed_desc": base_desc, "embed_color": int(embed.color),
+        "user_id": interaction.user.id,
+        "kwargs": save_kwargs,
+    })

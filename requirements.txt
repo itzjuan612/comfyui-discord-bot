@@ -5,4 +5,7 @@ onnxruntime>=1.12
 Pillow>=10.0
 numpy>=1.23
 huggingface_hub>=0.20
-ultralytics>=8.0
+# ultralytics (pulls in ~2 GB of torch) is only needed for the one-time
+# EraX NSFW ONNX export in download_erax.py. Not required once
+# models/erax_nsfw.onnx exists on disk. Install it on demand with:
+#     pip install ultralytics
