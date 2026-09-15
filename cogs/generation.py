@@ -2,6 +2,7 @@ import io
 
 from PIL import Image
 import discord
+from typing import Optional
 import logging
 from discord import app_commands
 
@@ -20,7 +21,7 @@ from core import (
 )
 from ui.autocomplete import _sdxl_model_autocomplete, _sdxl_lora_autocomplete, _zimage_model_autocomplete
 from workflow import run_image
-from ui.views import GenerationView, CheckpointPickerView
+from ui.views import CheckpointPickerView
 from job_queue import job_queue
 
 
@@ -52,7 +53,7 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
         progress.done = True
         log.info("%s: got %d images", model, len(images))
         display_model = meta.get("ckpt_name") or gen_kwargs.get("ckpt_name") or model
-        base_lines = [f"**Model:** {display_model}", f"**Prompt:** {prompt}"]
+        base_lines = [f"**Model:** {display_model}", f"**Prompt:** {prompt[:3800]}"]
         if model == "ideogram":
             quality = gen_kwargs.get("quality")
             if quality:
@@ -98,15 +99,12 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
 async def ideogram(interaction: discord.Interaction, prompt: str,
                    seed: int | None = None,
                    quality: str | None = None,
-                   megapixels: int | None = None,
+                   megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
                    aspect_ratio: str | None = None,
                    stealth: bool | None = None):
     if stealth is None:
         stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
-    if moderation.is_banned(interaction.user.id):
-        await interaction.response.send_message(
-            content="\U0001f6ab You are banned from using this bot. Please contact an admin.", ephemeral=True
-        )
+    if await ban_guard(interaction):
         return
     if not await check_cooldown(interaction):
         await interaction.response.send_message(
@@ -163,12 +161,12 @@ async def ideogram(interaction: discord.Interaction, prompt: str,
 async def sdxl(interaction: discord.Interaction, prompt: str,
                 model: str | None = None,
                 negative: str | None = None,
-                steps: int | None = None,
-                width: int | None = None,
-                height: int | None = None,
+                steps: Optional[app_commands.Range[int, 1, 150]] = None,
+                width: Optional[app_commands.Range[int, 64, 4096]] = None,
+                height: Optional[app_commands.Range[int, 64, 4096]] = None,
                 sampler: str | None = None,
                 scheduler: str | None = None,
-                cfg: float | None = None,
+                cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
                 lora1: str | None = None,
                 lora2: str | None = None,
                 seed: int | None = None,
@@ -176,15 +174,7 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
                 stealth: bool | None = None):
     if stealth is None:
         stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
-    if moderation.is_banned(interaction.user.id):
-        await interaction.response.send_message(
-            content="\U0001f6ab You are banned from using this bot. Please contact an admin.", ephemeral=True
-        )
-        return
-    if not await check_cooldown(interaction):
-        await interaction.response.send_message(
-            content="\u23f3 Please wait before requesting another image.", ephemeral=True
-        )
+    if await ban_guard(interaction):
         return
 
     if nsfw_blocked(interaction, prompt):
@@ -245,6 +235,14 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
                 ephemeral=True,
             )
             return
+    # Cooldown is consumed only after all input validation passes, so a typo
+    # or missing checkpoint never penalizes the user with a 20s lockout.
+    if not await check_cooldown(interaction):
+        await interaction.response.send_message(
+            content="\u23f3 Please wait before requesting another image.", ephemeral=True
+        )
+        return
+
 
     gen_kwargs = {
         "prompt": prompt,
@@ -288,29 +286,21 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
 async def zimage(interaction: discord.Interaction, prompt: str,
                  model: str | None = None,
                  negative: str | None = None,
-                 steps: int | None = None,
-                 cfg: float | None = None,
-                 width: int | None = None,
-                 height: int | None = None,
+                 steps: Optional[app_commands.Range[int, 1, 150]] = None,
+                 cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+                 width: Optional[app_commands.Range[int, 64, 4096]] = None,
+                 height: Optional[app_commands.Range[int, 64, 4096]] = None,
                  sampler: str | None = None,
                  scheduler: str | None = None,
                  lora1: str | None = None,
                  lora2: str | None = None,
                  lora_strength: float | None = None,
                  seed: int | None = None,
-                 batch_size: int | None = None,
+                 batch_size: Optional[app_commands.Range[int, 1, 8]] = None,
                  stealth: bool | None = None):
     if stealth is None:
         stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
-    if moderation.is_banned(interaction.user.id):
-        await interaction.response.send_message(
-            content="\U0001f6ab You are banned from using this bot. Please contact an admin.", ephemeral=True
-        )
-        return
-    if not await check_cooldown(interaction):
-        await interaction.response.send_message(
-            content="\u23f3 Please wait before requesting another image.", ephemeral=True
-        )
+    if await ban_guard(interaction):
         return
 
     if nsfw_blocked(interaction, prompt):
@@ -373,6 +363,14 @@ async def zimage(interaction: discord.Interaction, prompt: str,
                 ephemeral=True,
             )
             return
+    # Cooldown is consumed only after all input validation passes, so a typo
+    # or missing model never penalizes the user with a 20s lockout.
+    if not await check_cooldown(interaction):
+        await interaction.response.send_message(
+            content="\u23f3 Please wait before requesting another image.", ephemeral=True
+        )
+        return
+
 
     gen_kwargs = {
         "prompt": prompt,
@@ -410,17 +408,17 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
                   negative: str | None = None, strength: float | None = None,
                   sampler: str | None = None,
                   scheduler: str | None = None,
-                  scale: float | None = None, stealth: bool | None = None):
+                  scale: Optional[app_commands.Range[float, 1.0, 4.0]] = None,
+                  stealth: bool | None = None):
     if stealth is None:
         stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
-    if moderation.is_banned(interaction.user.id):
-        await interaction.response.send_message(
-            content="\U0001f6ab You are banned from using this bot. Please contact an admin.", ephemeral=True
-        )
+    if await ban_guard(interaction):
         return
-    if not await check_cooldown(interaction):
+
+    spec = config["models"].get(model, {}).get("upscale")
+    if spec is None:
         await interaction.response.send_message(
-            content="\u23f3 Please wait before requesting another image.", ephemeral=True
+            content=f"\u274c Model {model!r} has no upscaling workflow.", ephemeral=True
         )
         return
 
@@ -431,6 +429,13 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
         msg = await interaction.original_response()
         schedule_message_deletion(msg)
         return
+    # Cooldown last: validation failures must not burn the user's 20s window.
+    if not await check_cooldown(interaction):
+        await interaction.response.send_message(
+            content="\u23f3 Please wait before requesting another image.", ephemeral=True
+        )
+        return
+
 
     image_url = str(image.url)
     try:
@@ -445,10 +450,6 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
             input_longest_side = max(img.size)
         uploaded_name = await comfy.upload_image(data, f"discord_{uuid_hex()}.png")
         settings = user_settings.get_settings(interaction.user.id)
-        spec = config["models"].get(model, {}).get("upscale")
-        if spec is None:
-            await reply_error(interaction, f"\u274c Model {model!r} has no upscaling workflow.")
-            return
         if negative is None:
             negative = settings["negative_prompt"] or None
         # SDXL upscale: fall back to the user's saved SDXL sampler/scheduler defaults.
@@ -536,15 +537,14 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
 async def img2img(interaction: discord.Interaction, workflow: str,
                   image: discord.Attachment, prompt: str,
                   image2: discord.Attachment | None = None,
-                  cfg: float | None = None, steps: int | None = None,
-                  sampler: str | None = None, megapixels: int | None = None,
+                  cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+                  steps: Optional[app_commands.Range[int, 1, 150]] = None,
+                  sampler: str | None = None,
+                  megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
                   stealth: bool | None = None):
     if stealth is None:
         stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
-    if moderation.is_banned(interaction.user.id):
-        await interaction.response.send_message(
-            content="\U0001f6ab You are banned from using this bot. Please contact an admin.", ephemeral=True
-        )
+    if await ban_guard(interaction):
         return
     if not await check_cooldown(interaction):
         await interaction.response.send_message(
@@ -639,10 +639,10 @@ async def img2img(interaction: discord.Interaction, workflow: str,
         images, meta = await fut
         progress.done = True
         workflow_label = "1 image (edit)" if workflow == "single" else "2 images (combine)"
-        base_lines = [
+        base_desc = "\n".join([
             f"**Model:** {model}",
             f"**Workflow:** {workflow_label}",
-            f"**Prompt:** {prompt}",
+            f"**Prompt:** {prompt[:3800]}",
             f"**Resolution:** {image_resolution(images[0])}",
         ])
         await deliver_generation(
@@ -651,13 +651,6 @@ async def img2img(interaction: discord.Interaction, workflow: str,
             suffix="i2i", stealth=stealth,
             save_kwargs={**gen_kwargs, "seed": None},
         )
-        response_msg = await interaction.edit_original_response(content="", embed=embed, attachments=files, view=GenerationView(stealth=stealth))
-        generation_store.save(response_msg.id, {
-            "spec": spec, "model": model, "suffix": "i2i", "stealth": stealth,
-            "embed_desc": base_desc, "embed_color": int(embed.color),
-            "user_id": interaction.user.id,
-            "kwargs": {**gen_kwargs, "seed": None},
-        })
     except Exception as exc:
         progress.done = True
         log.exception("img2img failed")

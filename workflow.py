@@ -241,7 +241,33 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
                 workflow[scale_id_str]["inputs"][spec.get("scale_key", "scale_by")] = value
 
 
+# Runtime GPU-safety bounds. Command decorators use app_commands.Range for
+# immediate user-facing errors, but values coming from /settings, persisted
+# retry params, and older messages all funnel through here.
+_KW_BOUNDS = {
+    "steps": (1, 150),
+    "width": (64, 4096),
+    "height": (64, 4096),
+    "cfg": (0.5, 20.0),
+    "batch_size": (1, 8),
+    "megapixels": (1, 8),
+    "scale": (1.0, 4.0),
+}
+
+
+def _clamp_kwargs(kwargs: dict) -> None:
+    for key, (low, high) in _KW_BOUNDS.items():
+        value = kwargs.get(key)
+        if value is None:
+            continue
+        clamped = max(low, min(high, value))
+        if clamped != value:
+            log.warning("Clamping %s=%s to %s", key, value, clamped)
+            kwargs[key] = clamped
+
+
 async def run_image(spec: dict, on_progress=None, **kwargs):
+    _clamp_kwargs(kwargs)
     if kwargs.get("seed") is None:
         kwargs["seed"] = random.randint(0, 2**32 - 1)
 

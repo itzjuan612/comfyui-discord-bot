@@ -1,4 +1,5 @@
 import asyncio
+from typing import Optional
 import io
 
 import discord
@@ -22,8 +23,10 @@ from core import normalize_aspect_ratio
 @app_commands.describe(model="LLM model to use (see /llm_models)")
 @app_commands.describe(max_tokens="Max tokens for the LLM (optional)")
 @app_commands.describe(temperature="LLM temperature, 0-1 (optional)")
-async def gen_prompt(interaction: discord.Interaction, prompt: str, megapixels: int, aspect_ratio: str,
-                     model: str | None = None, max_tokens: int | None = None,
+async def gen_prompt(interaction: discord.Interaction, prompt: str,
+                     megapixels: app_commands.Range[int, 1, 8], aspect_ratio: str,
+                     model: str | None = None,
+                     max_tokens: Optional[app_commands.Range[int, 1, 4096]] = None,
                      temperature: float | None = None):
     if await ban_guard(interaction):
         return
