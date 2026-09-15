@@ -377,5 +377,16 @@ async def run_text_workflow(file_path: str, patches: dict, target_node: str | No
     for node_id, inputs in patches.items():
         for key, value in inputs.items():
             workflow[str(node_id)]["inputs"][key] = value
-    prompt_id, _client_id = await comfy.queue_prompt(workflow)
-    return await comfy.wait_for_output_text(prompt_id, target_node=target_node)
+    async def _run() -> str:
+        prompt_id, _client_id = await comfy.queue_prompt(workflow)
+        return await comfy.wait_for_output_text(prompt_id, target_node=target_node)
+
+    # Text workflows occupy ComfyUI's GPU. Their callers (gen_prompt) hold the
+    # LLM lane, so in "separate" mode this work would run concurrently with
+    # image jobs on the comfyui lane and race their free_memory calls; route it
+    # through that lane so all ComfyUI execution stays serial. In unified mode
+    # everything already shares one lane.
+    from job_queue import job_queue
+    if job_queue.mode == "separate":
+        return await job_queue.submit(_run(), lane="comfyui", name="prompt_gen_workflow")
+    return await _run()
