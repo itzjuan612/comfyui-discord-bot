@@ -228,6 +228,13 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
                 content=f"\u274c Could not query ComfyUI for available checkpoints: {exc}",
                 ephemeral=True,
             )
+        if model not in available:
+            # The listing is TTL-cached; refresh once before rejecting a
+            # checkpoint that may have been added moments ago.
+            try:
+                available = await comfy.fetch_checkpoints(force=True)
+            except Exception:
+                pass
             return
         if model not in available:
             await interaction.response.send_message(
@@ -356,6 +363,13 @@ async def zimage(interaction: discord.Interaction, prompt: str,
                 content=f"\u274c Could not query ComfyUI for available diffusion models: {exc}",
                 ephemeral=True,
             )
+        if model not in available:
+            # The listing is TTL-cached; refresh once before rejecting a
+            # model that may have been added moments ago.
+            try:
+                available = await comfy.fetch_diffusion_models(force=True)
+            except Exception:
+                pass
             return
         if model not in available:
             await interaction.response.send_message(

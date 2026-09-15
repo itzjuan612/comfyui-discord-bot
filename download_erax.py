@@ -9,7 +9,9 @@ Usage:
 The exported model is written to models/erax_nsfw.onnx (the same path for any
 size), so nsfw_guard always loads that one file.
 
-Requires: huggingface_hub, ultralytics (pulls in onnx / onnxslim automatically).
+Requires: huggingface_hub always; ultralytics (pulls in onnx / onnxslim /
+torch) only for this one-time export step, and only until
+models/erax_nsfw.onnx exists on disk.
 """
 import os
 import sys
@@ -43,7 +45,14 @@ def download(size: str = "nano") -> str:
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     from huggingface_hub import hf_hub_download
-    from ultralytics import YOLO
+    try:
+        from ultralytics import YOLO
+    except ImportError as exc:
+        raise RuntimeError(
+            "The one-time EraX ONNX export needs 'ultralytics' (pulls in "
+            "torch). Run 'pip install ultralytics', rerun this download, "
+            "then optionally uninstall it once models/erax_nsfw.onnx exists."
+        ) from exc
 
     pt_path = hf_hub_download(
         repo_id=REPO_ID,
