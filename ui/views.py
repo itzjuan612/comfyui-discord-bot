@@ -4,7 +4,6 @@ import subprocess
 import sys
 import logging
 
-from http_session import get_session
 from PIL import Image
 import discord
 from discord.ui import View, Button, Modal, TextInput, Select
@@ -15,7 +14,7 @@ from core import (
     config, comfy, log, generation_store, user_settings, moderation,
     BOT_OWNER_ID, SAMPLER_NAMES, UPSCALE_MODELS, UPSCALE_MODEL_LABELS,
     image_resolution, uuid_hex,
-    reply_error, ban_guard, check_cooldown, can_manage, is_owner,
+    reply_error, ban_guard, check_cooldown, can_manage, is_owner, download_image,
     nsfw_blocked, deliver_generation,
     schedule_message_deletion, schedule_original_response_deletion,
     ProgressUpdater,
@@ -401,10 +400,7 @@ class UpscaleButton(Button):
             return
         source = image_attachments[0]
         try:
-            session = get_session()
-            async with session.get(source.url) as resp:
-                resp.raise_for_status()
-                data = await resp.read()
+            data = await download_image(source.url)
         except Exception as exc:
             log.warning("Could not download source image: %s", exc)
             await interaction.response.send_message(
@@ -540,10 +536,7 @@ class EditImageModal(Modal):
             megapixels = saved.get("img2img_megapixels")
 
         try:
-            session = get_session()
-            async with session.get(image_attachments[0].url) as resp:
-                resp.raise_for_status()
-                data1 = await resp.read()
+            data1 = await download_image(image_attachments[0].url)
             uploaded1 = await comfy.upload_image(data1, f"discord_{uuid_hex()}.png")
         except Exception as exc:
             progress.done = True

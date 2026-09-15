@@ -21,6 +21,7 @@ log = logging.getLogger("bot")
 
 from comfyui_client import ComfyUIClient, ComfyUIError
 from config_loader import load_config
+from http_session import get_session
 import user_settings
 import generation_store
 import nsfw_guard
@@ -493,6 +494,21 @@ def uuid_hex() -> str:
 
 
 DISCORD_IMAGE_LIMIT = 18 * 1024 * 1024  # Stay comfortably under Discord's ~20 MB upload limit
+ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024  # Hard cap for inbound attachments
+
+
+async def download_image(url) -> bytes:
+    """Download a Discord attachment, checking it really is a reasonably-sized image."""
+    session = get_session()
+    async with session.get(str(url)) as resp:
+        resp.raise_for_status()
+        ctype = resp.headers.get("Content-Type", "")
+        if ctype and not ctype.startswith("image/"):
+            raise ValueError(f"attachment is not an image (Content-Type: {ctype})")
+        data = await resp.read()
+    if len(data) > ATTACHMENT_MAX_BYTES:
+        raise ValueError(f"attachment exceeds the {ATTACHMENT_MAX_BYTES // (1024 * 1024)} MB limit")
+    return data
 
 
 def compress_image(data: bytes) -> tuple[bytes, str]:

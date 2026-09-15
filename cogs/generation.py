@@ -7,11 +7,10 @@ from typing import Optional
 from discord import app_commands
 from discord.ext import commands
 
-from http_session import get_session
 from core import (
     config, comfy, log, user_settings,
     image_resolution, uuid_hex,
-    reply_error, ban_guard, check_cooldown, nsfw_blocked, can_manage,
+    reply_error, ban_guard, check_cooldown, nsfw_blocked, can_manage, download_image,
     deliver_generation,
     schedule_message_deletion,
     ProgressUpdater, normalize_aspect_ratio,
@@ -458,12 +457,8 @@ class GenerationCog(commands.Cog):
             )
             return
 
-        image_url = str(image.url)
         try:
-            session = get_session()
-            async with session.get(image_url) as resp:
-                resp.raise_for_status()
-                data = await resp.read()
+            data = await download_image(image.url)
             input_longest_side = None
             if scale is not None:
                 # SeedVR2 targets absolute pixels, so we need the input image size.
@@ -610,16 +605,11 @@ class GenerationCog(commands.Cog):
 
         # Download and upload the input image(s) to ComfyUI.
         try:
-            session = get_session()
-            async with session.get(str(image.url)) as resp:
-                resp.raise_for_status()
-                data1 = await resp.read()
+            data1 = await download_image(image.url)
             uploaded1 = await comfy.upload_image(data1, f"discord_{uuid_hex()}.png")
             uploaded_files = [uploaded1]
             if need_two:
-                async with session.get(str(image2.url)) as resp:
-                    resp.raise_for_status()
-                    data2 = await resp.read()
+                data2 = await download_image(image2.url)
                 uploaded2 = await comfy.upload_image(data2, f"discord_{uuid_hex()}.png")
                 uploaded_files.append(uploaded2)
         except Exception as exc:
