@@ -1,3 +1,4 @@
+import asyncio
 import io
 import os
 import subprocess
@@ -731,10 +732,14 @@ class RestartButton(Button):
             content="\U0001f504 Restarting the bot\u2026", ephemeral=True
         )
         log.info("Restart requested by %s", interaction.user.id)
-        # Spawn a fresh process with the same argv, then exit immediately.
-        command = [sys.executable, os.path.abspath(sys.argv[0])] + sys.argv[1:]
-        subprocess.Popen(command, cwd=os.path.dirname(os.path.abspath(__file__)))
-        os._exit(0)
+        # Spawn a fresh process with the same argv, from the project root
+        # (workflow JSON paths and the *.db files are resolved relative to it),
+        # then close the bot gracefully so websockets/aiohttp shut down cleanly;
+        # main.py's finally-block runs the remaining session cleanup.
+        script = os.path.abspath(sys.argv[0])
+        command = [sys.executable, script] + sys.argv[1:]
+        subprocess.Popen(command, cwd=os.path.dirname(script))
+        asyncio.create_task(bot.close())
 
 
 class ManageAdminsButton(Button):
