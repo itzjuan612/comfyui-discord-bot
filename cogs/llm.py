@@ -51,7 +51,7 @@ async def gen_prompt(interaction: discord.Interaction, prompt: str,
     if not chosen_model:
         await reply_error(interaction, "\u274c No model selected and no default model configured.", target=msg)
         return
-    log.info("gen_prompt: prompt=%r megapixels=%s aspect_ratio=%s model=%r", prompt, megapixels, aspect_ratio, chosen_model)
+    log.debug("gen_prompt: prompt=%r megapixels=%s aspect_ratio=%s model=%r", prompt, megapixels, aspect_ratio, chosen_model)
     try:
         # A single session job holds the LLM lane for the entire gen_prompt
         # session: load -> probe -> user selection -> generation -> unload.

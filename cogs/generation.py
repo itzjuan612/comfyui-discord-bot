@@ -41,7 +41,7 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
     )
     progress_msg = await interaction.original_response()
     progress = ProgressUpdater(progress_msg, lane="comfyui")
-    log.info("%s: prompt=%r", model, prompt)
+    log.debug("%s: prompt=%r", model, prompt)
     try:
         job = run_image(
             spec, on_progress=progress.update,
@@ -576,7 +576,7 @@ async def img2img(interaction: discord.Interaction, workflow: str,
     progress_msg = await interaction.original_response()
     progress = ProgressUpdater(progress_msg, lane="comfyui")
     log = logging.getLogger("bot")
-    log.info("img2img: workflow=%s prompt=%r", workflow, prompt)
+    log.debug("img2img: workflow=%s prompt=%r", workflow, prompt)
 
     model = "flux2_klein"
     spec_key = "i2i_single" if workflow == "single" else "i2i_multi"

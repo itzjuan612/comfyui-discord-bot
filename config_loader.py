@@ -192,7 +192,7 @@ models:
 
 def _generate_default_config(path: str) -> None:
     """Write a default config.yaml so the user knows what to fill in."""
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(DEFAULT_CONFIG)
     print(f"[config] Generated default config at {path}")
     print("[config] Edit it to set your Discord token, ComfyUI URL, and LLM endpoint.")
@@ -433,7 +433,7 @@ def load_config(path: str | None = None) -> dict:
     if not os.path.exists(path):
         _generate_default_config(path)
 
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         text = f.read()
     config = yaml.safe_load(text) or {}
     _missing = _backfill_model_defaults(config)[1]

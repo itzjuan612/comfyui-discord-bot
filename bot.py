@@ -60,20 +60,32 @@ def _loop_exception_handler(loop, context):
     )
 
 
-@bot.event
-async def on_ready():
-    asyncio.get_running_loop().set_exception_handler(_loop_exception_handler)
-    await bot.tree.sync()
-    # Register the persistent GenerationView inside the running event loop.
-    # (Calling bot.add_view() before bot.run() creates the view outside the
-    # loop, so its internal "stopped" future is None and it silently drops
-    # every button click -> buttons appear to time out.)
+async def _setup_hook():
+    """One-time startup, run inside the event loop before connecting.
+
+    The persistent GenerationView must be added inside the running event
+    loop (calling bot.add_view() before bot.run() creates the view outside
+    the loop, so its internal "stopped" future is None and it silently
+    drops every button click -> buttons appear to time out). The command
+    tree is synced here once per process instead of on every on_ready,
+    because Discord caps global command updates per day and a
+    reconnect-heavy day could exhaust the budget.
+    """
     persistent_view = GenerationView()
     bot.add_view(persistent_view)
     log.info(
         "Registered persistent GenerationView: persistent=%s, dispatchable=%s",
         persistent_view.is_persistent(), persistent_view.is_dispatchable(),
     )
+    await bot.tree.sync()
+
+
+bot.setup_hook = _setup_hook
+
+
+@bot.event
+async def on_ready():
+    asyncio.get_running_loop().set_exception_handler(_loop_exception_handler)
     print(f"Bot ready. T2I models: {T2I_MODELS}, Upscale models: {UPSCALE_MODELS}, I2I models: {I2I_MODELS}")
     # Fetch the LLM model list in the background so startup is never blocked
     # by the LLM endpoint, and keep it refreshed on a schedule.
