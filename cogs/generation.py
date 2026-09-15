@@ -2,8 +2,8 @@ import io
 
 from PIL import Image
 import discord
-from typing import Optional
 import logging
+from typing import Optional
 from discord import app_commands
 
 from bot import bot
@@ -228,6 +228,7 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
                 content=f"\u274c Could not query ComfyUI for available checkpoints: {exc}",
                 ephemeral=True,
             )
+            return
         if model not in available:
             # The listing is TTL-cached; refresh once before rejecting a
             # checkpoint that may have been added moments ago.
@@ -235,13 +236,13 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
                 available = await comfy.fetch_checkpoints(force=True)
             except Exception:
                 pass
-            return
         if model not in available:
             await interaction.response.send_message(
                 content=f"\u274c Checkpoint \u201c{model}\u201d was not found in models/checkpoints.",
                 ephemeral=True,
             )
             return
+
     # Cooldown is consumed only after all input validation passes, so a typo
     # or missing checkpoint never penalizes the user with a 20s lockout.
     if not await check_cooldown(interaction):
@@ -249,7 +250,6 @@ async def sdxl(interaction: discord.Interaction, prompt: str,
             content="\u23f3 Please wait before requesting another image.", ephemeral=True
         )
         return
-
 
     gen_kwargs = {
         "prompt": prompt,
@@ -363,6 +363,7 @@ async def zimage(interaction: discord.Interaction, prompt: str,
                 content=f"\u274c Could not query ComfyUI for available diffusion models: {exc}",
                 ephemeral=True,
             )
+            return
         if model not in available:
             # The listing is TTL-cached; refresh once before rejecting a
             # model that may have been added moments ago.
@@ -370,13 +371,13 @@ async def zimage(interaction: discord.Interaction, prompt: str,
                 available = await comfy.fetch_diffusion_models(force=True)
             except Exception:
                 pass
-            return
         if model not in available:
             await interaction.response.send_message(
                 content=f"\u274c Model \u201c{model}\u201d was not found in models/diffusion_models.",
                 ephemeral=True,
             )
             return
+
     # Cooldown is consumed only after all input validation passes, so a typo
     # or missing model never penalizes the user with a 20s lockout.
     if not await check_cooldown(interaction):
@@ -384,7 +385,6 @@ async def zimage(interaction: discord.Interaction, prompt: str,
             content="\u23f3 Please wait before requesting another image.", ephemeral=True
         )
         return
-
 
     gen_kwargs = {
         "prompt": prompt,
@@ -443,13 +443,13 @@ async def upscale(interaction: discord.Interaction, model: str, image: discord.A
         msg = await interaction.original_response()
         schedule_message_deletion(msg)
         return
+
     # Cooldown last: validation failures must not burn the user's 20s window.
     if not await check_cooldown(interaction):
         await interaction.response.send_message(
             content="\u23f3 Please wait before requesting another image.", ephemeral=True
         )
         return
-
 
     image_url = str(image.url)
     try:
@@ -670,13 +670,13 @@ async def img2img(interaction: discord.Interaction, workflow: str,
         log.exception("img2img failed")
         await reply_error(interaction, f"\u274c Image-to-image failed: {exc}", target=progress_msg)
 @bot.tree.command(name="flush", description="Unload all models and execution cache from ComfyUI")
+async def flush(interaction: discord.Interaction):
     if not can_manage(interaction.user.id):
         await interaction.response.send_message(
             content="\u26a0\ufe0f Only the bot owner and admins can flush ComfyUI memory.",
             ephemeral=True,
         )
         return
-async def flush(interaction: discord.Interaction):
     await interaction.response.defer()
     log = logging.getLogger("bot")
     log.info("flush: freeing ComfyUI memory")

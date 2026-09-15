@@ -15,8 +15,8 @@ from core import (
     config, comfy, log, generation_store, user_settings, moderation,
     BOT_OWNER_ID, SAMPLER_NAMES, UPSCALE_MODELS, UPSCALE_MODEL_LABELS,
     image_resolution, uuid_hex,
-    nsfw_blocked, deliver_generation,
     reply_error, ban_guard, check_cooldown, can_manage, is_owner,
+    nsfw_blocked, deliver_generation,
     schedule_message_deletion, schedule_original_response_deletion,
     ProgressUpdater,
     _parse_opt_float, _parse_opt_int, _parse_opt_str,
@@ -44,6 +44,7 @@ class RetryButton(Button):
             await interaction.response.send_message(
                 content="\u23f3 Please wait before retrying.", ephemeral=True
             )
+            return
         # The stored prompt was gated when originally generated, but the
         # channel may not be NSFW-marked anymore; re-check before GPU work.
         saved_prompt = params.get("kwargs", {}).get("prompt")
@@ -54,7 +55,6 @@ class RetryButton(Button):
             )
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
-            return
             return
         stealth = bool(params.get("stealth", False))
         await interaction.response.send_message(
@@ -110,8 +110,8 @@ class DeleteButton(Button):
         deleted = True
         try:
             await interaction.message.delete()
-            deleted = False
         except discord.Forbidden:
+            deleted = False
             log.warning(
                 "Delete failed for message %s: missing Manage Messages permission",
                 interaction.message.id,
@@ -124,12 +124,12 @@ class DeleteButton(Button):
             log.info(
                 "Message %s was already deleted",
                 interaction.message.id,
+            )
         # Only drop the stored retry params once the message is actually gone
         # (NotFound counts: the entry is then orphaned). On Forbidden, keep
         # them so the retry buttons keep working.
         if deleted:
             generation_store.pop(interaction.message.id)
-            )
 
 
 class UpscaleModelButton(Button):
@@ -283,6 +283,7 @@ class CheckpointPickerView(View):
 
     async def handle_select(self, interaction: discord.Interaction, value: str):
         if await ban_guard(interaction):
+            return
         # The /upscale prompt was gated at command time, but the channel's
         # NSFW marking may have changed while the picker was open.
         if self.prompt and nsfw_blocked(interaction, self.prompt):
@@ -292,7 +293,6 @@ class CheckpointPickerView(View):
             )
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
-            return
             return
         self.stop()
         ckpt_name = None if value == "default" else value
@@ -486,6 +486,7 @@ class EditImageModal(Modal):
                 content="\u26a0\ufe0f Unknown sampler \u201c" + sampler + "\u201d.", ephemeral=True
             )
             return
+
         if nsfw_blocked(interaction, prompt):
             await interaction.response.send_message(
                 content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
@@ -494,7 +495,6 @@ class EditImageModal(Modal):
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
             return
-
 
         if not await check_cooldown(interaction):
             await interaction.response.send_message(
