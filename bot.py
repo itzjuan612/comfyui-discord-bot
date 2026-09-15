@@ -12,14 +12,12 @@ from core import (
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
 
-# Import cogs (they import ui.views, which needs ``bot``); each registers its
-# slash commands on bot.tree at import time.
+# Cog extensions. They are loaded via bot.load_extension() in setup_hook
+# (below), which keeps this module free of the circular cogs -> ui.views ->
+# bot import that the old module-level ``import cogs.*`` lines relied on.
 # NOTE: bot.py is the shared bot module. The entry point is main.py, so bot.py
 # is only ever loaded once and there is a single Bot instance for everything.
-import cogs.generation
-import cogs.llm
-import cogs.admin
-import cogs.settings
+COGS = ("cogs.generation", "cogs.llm", "cogs.admin", "cogs.settings")
 
 from ui.views import GenerationView
 from http_session import close_session
@@ -71,6 +69,8 @@ async def _setup_hook():
     because Discord caps global command updates per day and a
     reconnect-heavy day could exhaust the budget.
     """
+    for extension in COGS:
+        await bot.load_extension(extension)
     persistent_view = GenerationView()
     bot.add_view(persistent_view)
     log.info(
