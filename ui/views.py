@@ -13,7 +13,7 @@ from discord.enums import TextStyle
 from bot import bot
 from core import (
     config, comfy, log, generation_store, user_settings, moderation,
-    BOT_OWNER_ID, SAMPLER_NAMES, UPSCALE_MODELS, UPSCALE_MODEL_LABELS,
+    BOT_OWNER_ID, SAMPLER_NAMES, SCHEDULER_NAMES, UPSCALE_MODELS, UPSCALE_MODEL_LABELS,
     image_resolution, uuid_hex,
     reply_error, ban_guard, check_cooldown, can_manage, is_owner, download_image,
     nsfw_blocked, deliver_generation,
@@ -422,29 +422,22 @@ class UpscaleButton(Button):
         )
 
 
-class EditImageModal(Modal):
+class FluxEditModal(Modal):
     """Modal form for editing a generated image via the single-image
     (1 image / edit) flux_edit workflow using Flux 2 Klein 4B Base.
 
     The first image of the clicked message is used as the source. The form
-    takes prompt, privacy (stealth/public), cfg, steps, and sampler;
-    left-empty fields fall back to the user's saved flux_edit defaults.
+    takes prompt, steps, sampler, and privacy (stealth/public); CFG is not
+    a field and always falls back to the user's saved flux_edit default.
+    Left-empty fields fall back to the user's saved flux_edit defaults.
     """
 
     def __init__(self, default_stealth: bool = False):
-        super().__init__(title="Edit Image (1-image workflow)")
+        super().__init__(title="Flux Edit (1-image workflow)")
         self.default_stealth = default_stealth
         self.prompt_input = TextInput(
             label="Prompt", style=TextStyle.paragraph,
             placeholder="Describe the edit", required=True,
-        )
-        self.privacy_input = TextInput(
-            label="Privacy (optional)", style=TextStyle.short, required=False,
-            placeholder="stealth = only you see it; public = visible to everyone",
-        )
-        self.cfg_input = TextInput(
-            label="CFG (optional)", style=TextStyle.short, required=False,
-            placeholder="e.g. 7",
         )
         self.steps_input = TextInput(
             label="Steps (optional)", style=TextStyle.short, required=False,
@@ -454,11 +447,14 @@ class EditImageModal(Modal):
             label="Sampler (optional)", style=TextStyle.short, required=False,
             placeholder="e.g. euler",
         )
+        self.privacy_input = TextInput(
+            label="Privacy (optional)", style=TextStyle.short, required=False,
+            placeholder="stealth = only you see it; public = visible to everyone",
+        )
         self.add_item(self.prompt_input)
-        self.add_item(self.privacy_input)
-        self.add_item(self.cfg_input)
         self.add_item(self.steps_input)
         self.add_item(self.sampler_input)
+        self.add_item(self.privacy_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         prompt = self.prompt_input.value.strip()
@@ -472,7 +468,8 @@ class EditImageModal(Modal):
                 content="\u26a0\ufe0f Privacy must be \u201cstealth\u201d or \u201cpublic\u201d.", ephemeral=True
             )
             return
-        cfg = _parse_opt_float(self.cfg_input.value)
+        # CFG is not a modal field; it always falls back to the saved flux_edit default.
+        cfg = None
         steps = _parse_opt_int(self.steps_input.value)
         sampler = _parse_opt_str(self.sampler_input.value)
         # Megapixels is no longer a modal field; fall back to the saved flux_edit default.
@@ -516,7 +513,7 @@ class EditImageModal(Modal):
         )
         progress = ProgressUpdater(progress_msg, lane="comfyui",
                                    label="\U0001f3a8 Editing image\u2026")
-        log.info("Edit Image clicked for message %s", interaction.message.id)
+        log.info("Flux Edit clicked for message %s", interaction.message.id)
 
         model = "flux2_klein"
         spec = config["models"].get(model, {}).get("i2i_single")
@@ -541,7 +538,7 @@ class EditImageModal(Modal):
             uploaded1 = await comfy.upload_image(data1, f"discord_{uuid_hex()}.png")
         except Exception as exc:
             progress.done = True
-            log.exception("Edit Image download/upload failed")
+            log.exception("Flux Edit download/upload failed")
             await reply_error(interaction, f"\u274c Could not process the source image: {exc}", target=progress_msg)
             return
 
@@ -576,25 +573,213 @@ class EditImageModal(Modal):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("Edit Image failed")
+            log.exception("Flux Edit failed")
             await reply_error(interaction, f"\u274c Image edit failed: {exc}", target=progress_msg)
-class EditButton(Button):
-    """Green 'Edit Image' button shown on every generated output.
+class QwenEditModal(Modal):
+    """Modal form for editing a generated image via the single-image
+    Qwen Image 2.1 edit workflow.
+
+    The first image of the clicked message is used as the source. The form
+    takes prompt, steps, sampler, scheduler, and privacy (stealth/public);
+    CFG is not a field and always falls back to the user's saved Qwen
+    default. Left-empty fields fall back to the user's saved Qwen defaults.
+    Output resolution follows the input image.
+    """
+
+    def __init__(self, default_stealth: bool = False):
+        super().__init__(title="Qwen Edit (1-image workflow)")
+        self.default_stealth = default_stealth
+        self.prompt_input = TextInput(
+            label="Prompt", style=TextStyle.paragraph,
+            placeholder="Describe the edit", required=True,
+        )
+        self.steps_input = TextInput(
+            label="Steps (optional)", style=TextStyle.short, required=False,
+            placeholder="e.g. 25",
+        )
+        self.sampler_input = TextInput(
+            label="Sampler (optional)", style=TextStyle.short, required=False,
+            placeholder="e.g. euler",
+        )
+        self.scheduler_input = TextInput(
+            label="Scheduler (optional)", style=TextStyle.short, required=False,
+            placeholder="e.g. simple",
+        )
+        self.privacy_input = TextInput(
+            label="Privacy (optional)", style=TextStyle.short, required=False,
+            placeholder="stealth = only you see it; public = visible to everyone",
+        )
+        self.add_item(self.prompt_input)
+        self.add_item(self.steps_input)
+        self.add_item(self.sampler_input)
+        self.add_item(self.scheduler_input)
+        self.add_item(self.privacy_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        prompt = self.prompt_input.value.strip()
+        privacy_raw = (self.privacy_input.value or "").strip().lower()
+        if privacy_raw == "stealth":
+            stealth = True
+        elif privacy_raw in ("public", "visible", ""):
+            stealth = self.default_stealth
+        else:
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f Privacy must be \u201cstealth\u201d or \u201cpublic\u201d.", ephemeral=True
+            )
+            return
+        # CFG is not a modal field; it always falls back to the saved Qwen default.
+        cfg = None
+        steps = _parse_opt_int(self.steps_input.value)
+        sampler = _parse_opt_str(self.sampler_input.value)
+        scheduler = _parse_opt_str(self.scheduler_input.value)
+
+        if sampler is not None and sampler not in SAMPLER_NAMES:
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f Unknown sampler \u201c" + sampler + "\u201d.", ephemeral=True
+            )
+            return
+        if scheduler is not None and scheduler not in SCHEDULER_NAMES:
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f Unknown scheduler \u201c" + scheduler + "\u201d.", ephemeral=True
+            )
+            return
+
+        if nsfw_blocked(interaction, prompt):
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
+            )
+            msg = await interaction.original_response()
+            schedule_message_deletion(msg)
+            return
+
+        if not await check_cooldown(interaction):
+            await interaction.response.send_message(
+                content="\u23f3 Please wait before retrying.", ephemeral=True
+            )
+            return
+
+        image_attachments = [
+            a for a in interaction.message.attachments
+            if a.content_type and a.content_type.startswith("image/")
+        ]
+        if not image_attachments:
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f This message has no image to edit.", ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=stealth)
+        progress_msg = await interaction.followup.send(
+            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Editing image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            ephemeral=stealth,
+        )
+        progress = ProgressUpdater(progress_msg, lane="comfyui",
+                                   label="\U0001f3a8 Editing image\u2026")
+        log.info("Qwen Edit clicked for message %s", interaction.message.id)
+
+        model = "qwen_image"
+        spec = config["models"].get(model, {}).get("i2i")
+        if spec is None:
+            progress.done = True
+            await reply_error(interaction, "\u274c The Qwen single-image edit workflow is not configured.", target=progress_msg)
+            return
+
+        # Fall back to the user's shared Qwen defaults for unset fields.
+        saved = user_settings.get_settings(interaction.user.id)
+        if cfg is None:
+            cfg = saved.get("qwen_cfg")
+        if steps is None:
+            steps = saved.get("qwen_steps")
+        if sampler is None:
+            sampler = saved.get("qwen_sampler")
+        if scheduler is None:
+            scheduler = saved.get("qwen_scheduler")
+
+        try:
+            data1 = await download_image(image_attachments[0].url)
+            uploaded1 = await comfy.upload_image(data1, f"discord_{uuid_hex()}.png")
+        except Exception as exc:
+            progress.done = True
+            log.exception("Qwen Edit download/upload failed")
+            await reply_error(interaction, f"\u274c Could not process the source image: {exc}", target=progress_msg)
+            return
+
+        gen_kwargs = {
+            "prompt": prompt,
+            "seed": None,
+            "cfg": cfg,
+            "steps": steps,
+            "sampler": sampler,
+            "scheduler": scheduler,
+            "image_filename": uploaded1,
+            # Single-image button flow: the second-image node is omitted.
+            "image2_filename": None,
+        }
+
+        try:
+            job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
+            fut = job_queue.submit(job, lane="comfyui", name="qwen_image_i2i")
+            progress.arm(job)
+            images, meta = await fut
+            progress.done = True
+            display_model = meta.get("ckpt_name") or model
+            base_lines = [
+                f"**Model:** {display_model}",
+                "**Workflow:** 1 image (edit)",
+                f"**Prompt:** {prompt[:3800]}",
+                f"**Resolution:** {image_resolution(images[0])}",
+            ]
+            base_desc = "\n".join(base_lines)
+            await deliver_generation(
+                interaction, images=images, meta=meta, base_desc=base_desc,
+                color=int(discord.Color.purple()), spec=spec, model=model,
+                suffix="i2i", stealth=stealth, target=progress_msg,
+                save_kwargs={**gen_kwargs, "seed": None},
+            )
+        except Exception as exc:
+            progress.done = True
+            log.exception("Qwen Edit failed")
+            await reply_error(interaction, f"\u274c Image edit failed: {exc}", target=progress_msg)
+
+
+class FluxEditButton(Button):
+    """Blue 'Flux Edit' button shown on every generated output.
 
     Opens a modal to run the single-image (1 image / edit) flux_edit workflow
-    on the image(s) in the message.
+    on the image(s) in the message. The custom_id is unchanged from the old
+    'Edit Image' button so buttons on already-posted messages keep working.
     """
 
     def __init__(self):
-        super().__init__(label="Edit Image", emoji="\U0001f973", style=discord.ButtonStyle.green, custom_id="edit_image_generation")
+        super().__init__(label="Flux Edit", emoji="\U0001f973", style=discord.ButtonStyle.primary, custom_id="edit_image_generation")
 
     async def callback(self, interaction: discord.Interaction):
         if await ban_guard(interaction):
             return
-        log.info("Edit Image clicked for message %s", interaction.message.id)
+        log.info("Flux Edit clicked for message %s", interaction.message.id)
         params = generation_store.get(interaction.message.id)
         default_stealth = bool(params.get("stealth", False)) if params else False
-        await interaction.response.send_modal(EditImageModal(default_stealth=default_stealth))
+        await interaction.response.send_modal(FluxEditModal(default_stealth=default_stealth))
+
+
+class QwenEditButton(Button):
+    """Orange 'Qwen Edit' button shown on every generated output.
+
+    Opens a modal to run the single-image Qwen Image 2.1 edit workflow
+    on the image(s) in the message.
+    """
+
+    def __init__(self):
+        super().__init__(label="Qwen Edit", emoji="\u2728", style=discord.ButtonStyle.green, custom_id="qwen_edit_image_generation")
+
+    async def callback(self, interaction: discord.Interaction):
+        if await ban_guard(interaction):
+            return
+        log.info("Qwen Edit clicked for message %s", interaction.message.id)
+        params = generation_store.get(interaction.message.id)
+        default_stealth = bool(params.get("stealth", False)) if params else False
+        await interaction.response.send_modal(QwenEditModal(default_stealth=default_stealth))
 
 
 class GenerationView(View):
@@ -612,7 +797,8 @@ class GenerationView(View):
         if not stealth:
             self.add_item(DeleteButton())
         self.add_item(UpscaleButton())
-        self.add_item(EditButton())
+        self.add_item(FluxEditButton())
+        self.add_item(QwenEditButton())
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item):
         log.warning("GenerationView error: %s", error)

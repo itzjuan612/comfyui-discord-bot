@@ -21,7 +21,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | :dark_sunglasses: Stealth Mode | Ephemeral messages visible only to the requesting user. |
 | :repeat: Retry / Delete Buttons | Persistent buttons on every output message. Retry re-rolls the seed (re-applying the NSFW prompt gate and cooldown); Delete removes the message (owner or admins can delete any). |
 | :rocket: Upscale 2x Button | One-click upscale of any generated image, with model picker. For SDXL images, the SDXL option reuses the checkpoint the image was created with; for non-SDXL images the SDXL option is hidden (SDXL upscale works best with SDXL checkpoints). |
-| :paintbrush: Edit Image Button | Opens a modal to run the Flux 2 Klein 4B single-image edit workflow on an output. |
+| :paintbrush: Edit Buttons | Flux Edit (blue) opens a modal to run the Flux 2 Klein 4B single-image edit workflow on an output (prompt, steps, sampler, privacy); Qwen Edit (green) does the same with Qwen Image 2.1 (prompt, steps, sampler, scheduler, privacy). |
 | :gear: Per-User Settings (`/settings`, `/reset_settings`) | Saved defaults for prompts, CFG, steps, sampler, quality, megapixels, aspect ratio, and stealth. Stored in SQLite. |
 | :shield: NSFW Guardrail | Keyword-based prompt filter + CPU ONNX image check using the EraX-NSFW-V1.0 detector (runs in RAM, no GPU). NSFW content is blocked unless the channel is Discord-marked NSFW. |
 | :police_officer: Moderation | Ban/unban users, promote/demote admins, view user list. Stored in SQLite. |
