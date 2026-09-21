@@ -8,7 +8,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 
 | Feature | Description |
 | --- | --- |
-| :art: Qwen Image 2.1 (`/qwen_image`) (NEW!) | Generate images with Qwen Image 2.1. Supports prompt, negative prompt, steps, megapixels, aspect ratio, sampler, scheduler, CFG, seed, and batch size. |
+| :art: Qwen Image 2.1 (`/qwen_image`) (NEW!) | Generate images with Qwen Image 2.1. The prompt is auto-translated to English, optionally rewritten first by a Qwen 8B prompt enhancer. Supports prompt, negative prompt, enhance, steps, megapixels, aspect ratio, sampler, scheduler, CFG, seed, and batch size. |
 | :art: Ideogram (`/ideogram`) | Generate professional images with Ideogram 4 by using JSON to carefully sketch your image. Supports seed, quality preset, megapixels, and aspect ratio. |
 | :art: Stable Diffusion XL (`/sdxl`) | Generate images with versatile SDXL models. Supports prompt, negative prompt, seed, steps, width/height, and CFG. Can use any checkpoint in ComfyUI's `models/checkpoints` folder via the `model` parameter, plus up to two LoRAs (`lora1`, `lora2`) with a unified `lora_strength`. Automatically uses separate CLIP/VAE loaders for checkpoints that lack a bundled text encoder/VAE (split checkpoints). |
 | :art: Z-Image Turbo & Base (`/zimage`) | Generate high quality images with very fast and light Z-Image models. Supports natural language prompts, up to two LoRAs, multiple Z-Image models, and also batch images. Other params are steps, width/height, and CFG. |
@@ -21,7 +21,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | :dark_sunglasses: Stealth Mode | Ephemeral messages visible only to the requesting user. |
 | :repeat: Retry / Delete Buttons | Persistent buttons on every output message. Retry re-rolls the seed (re-applying the NSFW prompt gate and cooldown); Delete removes the message (owner or admins can delete any). |
 | :rocket: Upscale 2x Button | One-click upscale of any generated image, with model picker. For SDXL images, the SDXL option reuses the checkpoint the image was created with; for non-SDXL images the SDXL option is hidden (SDXL upscale works best with SDXL checkpoints). |
-| :paintbrush: Edit Buttons | Flux Edit (blue) opens a modal to run the Flux 2 Klein 4B single-image edit workflow on an output (prompt, steps, sampler, privacy); Qwen Edit (green) does the same with Qwen Image 2.1 (prompt, steps, sampler, scheduler, privacy). |
+| :paintbrush: Edit Buttons | Flux Edit (blue) opens a modal to run the Flux 2 Klein 4B single-image edit workflow on an output (prompt, steps, sampler, resolution, privacy); Qwen Edit (green) does the same with Qwen Image 2.1 (prompt, steps, sampler, scheduler, privacy). |
 | :gear: Per-User Settings (`/settings`, `/reset_settings`) | Saved defaults for prompts, CFG, steps, sampler, quality, megapixels, aspect ratio, and stealth. Stored in SQLite. |
 | :shield: NSFW Guardrail | Keyword-based prompt filter + CPU ONNX image check using the EraX-NSFW-V1.0 detector (runs in RAM, no GPU). NSFW content is blocked unless the channel is Discord-marked NSFW. |
 | :police_officer: Moderation | Ban/unban users, promote/demote admins, view user list. Stored in SQLite. |
@@ -73,6 +73,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | --- | --- |
 | `prompt` | Text prompt (required) |
 | `negative` | Negative prompt |
+| `enhance` | Rewrite the prompt with the Qwen 8B prompt enhancer before generating (optional, off by default) |
 | `steps` | Sampling steps |
 | `megapixels` | Target resolution in MP |
 | `aspect_ratio` | Aspect ratio preset |
@@ -81,6 +82,8 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | `seed` | Seed (optional) |
 | `batch_size` | Number of images to generate at once |
 | `stealth` | Ephemeral output |
+
+> **Translation & enhancement:** The positive prompt passes through a Google Translate node (auto-detect → English) before encoding, so non-English prompts work directly — note that the prompt text is sent to Google Translate as part of generation. With `enhance: true`, the translated prompt is first rewritten by a Qwen 8B prompt enhancer (a system prompt steers it to preserve your intent, wording for visible text, and style) and the result is what the image model receives. The embed reports when enhancement was used.
 
 ### `/flux_edit`
 

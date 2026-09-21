@@ -427,9 +427,10 @@ class FluxEditModal(Modal):
     (1 image / edit) flux_edit workflow using Flux 2 Klein 4B Base.
 
     The first image of the clicked message is used as the source. The form
-    takes prompt, steps, sampler, and privacy (stealth/public); CFG is not
-    a field and always falls back to the user's saved flux_edit default.
-    Left-empty fields fall back to the user's saved flux_edit defaults.
+    takes prompt, steps, sampler, resolution (megapixels), and privacy
+    (stealth/public); CFG is not a field and always falls back to the user's
+    saved flux_edit default. Left-empty fields fall back to the user's saved
+    flux_edit defaults.
     """
 
     def __init__(self, default_stealth: bool = False):
@@ -447,6 +448,10 @@ class FluxEditModal(Modal):
             label="Sampler (optional)", style=TextStyle.short, required=False,
             placeholder="e.g. euler",
         )
+        self.megapixels_input = TextInput(
+            label="Resolution (optional)", style=TextStyle.short, required=False,
+            placeholder="Target megapixels, e.g. 1",
+        )
         self.privacy_input = TextInput(
             label="Privacy (optional)", style=TextStyle.short, required=False,
             placeholder="stealth = only you see it; public = visible to everyone",
@@ -454,6 +459,7 @@ class FluxEditModal(Modal):
         self.add_item(self.prompt_input)
         self.add_item(self.steps_input)
         self.add_item(self.sampler_input)
+        self.add_item(self.megapixels_input)
         self.add_item(self.privacy_input)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -472,12 +478,16 @@ class FluxEditModal(Modal):
         cfg = None
         steps = _parse_opt_int(self.steps_input.value)
         sampler = _parse_opt_str(self.sampler_input.value)
-        # Megapixels is no longer a modal field; fall back to the saved flux_edit default.
-        megapixels = None
+        megapixels = _parse_opt_int(self.megapixels_input.value)
 
         if sampler is not None and sampler not in SAMPLER_NAMES:
             await interaction.response.send_message(
                 content="\u26a0\ufe0f Unknown sampler \u201c" + sampler + "\u201d.", ephemeral=True
+            )
+            return
+        if megapixels is not None and not (1 <= megapixels <= 8):
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f Resolution must be between 1 and 8 megapixels.", ephemeral=True
             )
             return
 

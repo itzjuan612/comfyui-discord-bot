@@ -84,14 +84,19 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     # Text-encoder default (e.g. the Qwen 3 VL quant shared by Ideogram 4 and
     # Qwen Image 2.1). An explicit ``text_encoder`` kwarg wins; otherwise the
     # spec's default is applied so the workflow never depends on whatever
-    # filename was saved in the JSON.
-    text_encoder_node = spec.get("text_encoder_node")
-    if text_encoder_node is not None:
+    # filename was saved in the JSON. ``enhancer_text_encoder_node`` (when
+    # present) points at a second CLIPLoader feeding e.g. the Qwen 8B prompt
+    # enhancer and receives the same file.
+    if spec.get("text_encoder_node") is not None or spec.get("enhancer_text_encoder_node") is not None:
         effective_encoder = kwargs.get("text_encoder") or spec.get("default_text_encoder")
         if effective_encoder is not None:
-            node = workflow.get(str(text_encoder_node))
-            if node is not None and node.get("class_type") == "CLIPLoader":
-                node["inputs"]["clip_name"] = effective_encoder
+            for encoder_key in ("text_encoder_node", "enhancer_text_encoder_node"):
+                node_id = spec.get(encoder_key)
+                if node_id is None:
+                    continue
+                node = workflow.get(str(node_id))
+                if node is not None and node.get("class_type") == "CLIPLoader":
+                    node["inputs"]["clip_name"] = effective_encoder
 
     prompt = kwargs.get("prompt")
     negative = kwargs.get("negative")
@@ -104,7 +109,21 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     cfg = kwargs.get("cfg")
 
     if prompt is not None:
-        set_node(spec.get("prompt_node"), spec.get("prompt_key", "text"), prompt)
+        input_node = spec.get("prompt_input_node")
+        if input_node is not None:
+            # Prompt enters through an intermediate node (e.g. Qwen's Google
+            # Translate node feeding an enhance switch); the encode node's
+            # prompt input is a link into that switch, so writing to
+            # prompt_node would clobber the link and bypass translate/enhance.
+            set_node(input_node, spec.get("prompt_input_key", "text"), prompt)
+        else:
+            set_node(spec.get("prompt_node"), spec.get("prompt_key", "text"), prompt)
+    # Qwen Image 2.1 T2I: "Enhance prompt?" boolean. None leaves the workflow's
+    # saved default untouched; True/False flips the switch so the prompt is (or
+    # isn't) rewritten by the Qwen 8B prompt enhancer before encoding.
+    enhance = kwargs.get("enhance")
+    if enhance is not None:
+        set_node(spec.get("enhance_node"), spec.get("enhance_key", "value"), bool(enhance))
     if negative is not None:
         set_node(spec.get("negative_node"), spec.get("negative_key", "text"), negative)
     if seed is not None:

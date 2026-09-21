@@ -2,8 +2,8 @@
   "13": {
     "inputs": {
       "aspect_ratio": "1:1 (Square)",
-      "megapixels": 1,
-      "multiple": 32
+      "megapixels": 2,
+      "multiple": 8
     },
     "class_type": "ResolutionSelector",
     "_meta": {
@@ -26,6 +26,125 @@
       "title": "Guardar imagen (avanzado)"
     }
   },
+  "468": {
+    "inputs": {
+      "from_translate": "auto",
+      "to_translate": "en",
+      "manual_translate": true,
+      "Manual Trasnlate": "Manual Trasnlate",
+      "text": ""
+    },
+    "class_type": "GoogleTranslateTextNode",
+    "_meta": {
+      "title": "Google Translate Text Node"
+    }
+  },
+  "469": {
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "boogu",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Qwen 8B - Prompt Enhancer"
+    }
+  },
+  "470": {
+    "inputs": {
+      "value": "You are an Image Prompt Rewriting Expert for Qwen Image 2.1. Rewrite the user's image idea into the final generation prompt.\n\nReturn only the finished prompt in fluent natural English. Use one continuous descriptive response; do not explain, label, use Markdown headings, make a list, or mention these rules.\n\nPreserve the user's intent faithfully. Keep every explicitly stated subject, action, count, identity, age, attribute, color, material, relationship, location, composition, camera direction, lighting, mood, style, ratio, exclusion, and requested visible text. Never replace a requested concept with a different one.\n\nEnrich only when the user's idea is short or underspecified: add restrained, logically consistent visual detail about the environment, lighting, texture, atmosphere, spatial relationship, or composition. If it is already detailed, only clean up clarity or redundancy; do not invent people, objects, clothing, a location, a camera, realism, cinematic lighting, or a new aesthetic.\n\nClassify internally as portrait, text-containing image, or general image. For a portrait, describe identity and appearance only to the degree needed by the request; keep specified identity, age, hairstyle, clothing, expression, pose, and gaze exact. For visible text, preserve every requested word, number, capitalization, name, URL, brand, IP, title, slogan, and proper noun exactly as written. Put displayed text in English double quotation marks, do not translate it, and describe its placement, layout, color, font, size, and rendering method only when requested. Do not add text when none was requested.\n\nPreserve an explicitly requested visual style. If no style is specified, keep the prompt visually neutral instead of forcing photography or another style. Keep direct negative constraints as constraints. Keep the final prompt under 200 words.\n\nUser input:"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "SYSTEM PROMPT — Qwen Image 2.1"
+    }
+  },
+  "471": {
+    "inputs": {
+      "string_a": [
+        "470",
+        0
+      ],
+      "string_b": [
+        "468",
+        0
+      ],
+      "delimiter": ""
+    },
+    "class_type": "StringConcatenate",
+    "_meta": {
+      "title": "System Prompt + User Prompt"
+    }
+  },
+  "472": {
+    "inputs": {
+      "prompt": [
+        "471",
+        0
+      ],
+      "max_length": 2048,
+      "sampling_mode": "on",
+      "sampling_mode.temperature": 0.2,
+      "sampling_mode.top_k": 40,
+      "sampling_mode.top_p": 0.9,
+      "sampling_mode.min_p": 0.05,
+      "sampling_mode.repetition_penalty": 1.05,
+      "sampling_mode.seed": 0,
+      "sampling_mode.presence_penalty": 0,
+      "thinking": false,
+      "use_default_template": true,
+      "mtp": "auto",
+      "clip": [
+        "469",
+        0
+      ]
+    },
+    "class_type": "TextGenerate",
+    "_meta": {
+      "title": "Qwen 8B — Enhance Prompt"
+    }
+  },
+  "473": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Enhance prompt?"
+    }
+  },
+  "474": {
+    "inputs": {
+      "switch": [
+        "473",
+        0
+      ],
+      "on_false": [
+        "468",
+        0
+      ],
+      "on_true": [
+        "472",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "ORIGINAL / ENHANCED"
+    }
+  },
+  "475": {
+    "inputs": {
+      "source": [
+        "474",
+        0
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Final Prompt sent to Qwen 2.1"
+    }
+  },
   "459:451": {
     "inputs": {
       "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
@@ -38,8 +157,11 @@
   },
   "459:452": {
     "inputs": {
-      "prompt": "",
-      "negative_prompt": "",
+      "prompt": [
+        "474",
+        0
+      ],
+      "negative_prompt": "blurry, ugly, deformed, mutation",
       "resolution": 1024,
       "clip": [
         "459:453",
@@ -53,7 +175,7 @@
   },
   "459:453": {
     "inputs": {
-      "clip_name": "qwen3vl_8b_fp8_scaled.safetensors",
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
       "type": "qwen_image",
       "device": "default"
     },
@@ -89,14 +211,14 @@
   },
   "459:458": {
     "inputs": {
-      "seed": 593103825222985,
-      "steps": 25,
+      "seed": 644109402182626,
+      "steps": 15,
       "cfg": 1,
       "sampler_name": "euler",
       "scheduler": "simple",
       "denoise": 1,
       "model": [
-        "459:451",
+        "459:484",
         0
       ],
       "positive": [
@@ -115,6 +237,35 @@
     "class_type": "KSampler",
     "_meta": {
       "title": "KSampler"
+    }
+  },
+  "459:484": {
+    "inputs": {
+      "reuse_threshold": 0.2,
+      "start_percent": 0.2,
+      "end_percent": 0.7,
+      "verbose": false,
+      "model": [
+        "459:485",
+        0
+      ]
+    },
+    "class_type": "EasyCache",
+    "_meta": {
+      "title": "EasyCache"
+    }
+  },
+  "459:485": {
+    "inputs": {
+      "attention": "comfy kitchen attention",
+      "model": [
+        "459:451",
+        0
+      ]
+    },
+    "class_type": "ModelAttentionBackend",
+    "_meta": {
+      "title": "ModelAttentionBackend"
     }
   },
   "459:456": {

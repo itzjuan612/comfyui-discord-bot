@@ -119,14 +119,14 @@ models:
       # Node IDs in this workflow are prefixed "98:" (from ComfyUI's
       # graph export), so they must be quoted as strings in YAML.
       file: workflows/t2i/Ideogram_4_generator.json
-      default_model: "ideogram4_fp8_scaled.safetensors"
+      default_model: "ideogram4_int8_convrot.safetensors"
       model_node: "98:23"
       # The workflow has a second UNet loader for the unconditional branch.
-      default_model_unconditional: "ideogram4_unconditional_fp8_scaled.safetensors"
+      default_model_unconditional: "ideogram4_unconditional_int8_convrot.safetensors"
       model_node_unconditional: "98:154"
       # Text encoder (CLIPLoader). Same Qwen 3 VL file as Qwen Image 2.1, so a
       # different quant can be swapped in here.
-      default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
+      default_text_encoder: "qwen3vl_8b_int8_convrot.safetensors"
       text_encoder_node: "98:14"
       prompt_node: "98:24"
       prompt_key: text
@@ -198,8 +198,21 @@ models:
       file: workflows/t2i/qwen_image_21_t2i.json
       default_model: "qwen_image_2.1_int8_convrot.safetensors"
       model_node: "459:451"
-      default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
+      default_text_encoder: "qwen3vl_8b_int8_convrot.safetensors"
       text_encoder_node: "459:453"
+      # default_text_encoder is also applied to this CLIPLoader, which feeds
+      # the optional Qwen 8B prompt enhancer (TextGenerate node).
+      enhancer_text_encoder_node: "469"
+      # The positive prompt enters through the Google Translate node (auto -> en)
+      # and the enhance switch; the encode node's prompt input is a link into
+      # that switch, so the prompt must be written here instead of prompt_node.
+      prompt_input_node: "468"
+      prompt_input_key: text
+      # PrimitiveBoolean "Enhance prompt?": True reroutes the prompt through the
+      # Qwen 8B prompt enhancer before encoding. When the enhance kwarg is None
+      # this node is left untouched (workflow default: false).
+      enhance_node: "473"
+      enhance_key: value
       prompt_node: "459:452"
       prompt_key: prompt
       negative_node: "459:452"
@@ -222,7 +235,7 @@ models:
       file: workflows/i2i/qwen_image_21_i2i.json
       default_model: "qwen_image_2.1_int8_convrot.safetensors"
       model_node: "459:451"
-      default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
+      default_text_encoder: "qwen3vl_8b_int8_convrot.safetensors"
       text_encoder_node: "459:453"
       prompt_node: "459:474"
       prompt_key: prompt
