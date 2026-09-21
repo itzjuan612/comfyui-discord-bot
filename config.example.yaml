@@ -117,6 +117,10 @@ models:
       # The workflow has a second UNet loader for the unconditional branch.
       default_model_unconditional: "ideogram4_unconditional_fp8_scaled.safetensors"
       model_node_unconditional: "98:154"
+      # Text encoder (CLIPLoader). Same Qwen 3 VL file as Qwen Image 2.1, so a
+      # different quant can be swapped in here.
+      default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
+      text_encoder_node: "98:14"
       prompt_node: "98:24"
       prompt_key: text
       # Seed flows through the Random Number node (its "seed" input seeds the RNG).

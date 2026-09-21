@@ -81,9 +81,10 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         if node is not None and node.get("class_type") == "UNETLoader":
             node["inputs"]["unet_name"] = default_model_unconditional
 
-    # Qwen Image 2.1's text encoder (CLIPLoader) default. An explicit
-    # ``text_encoder`` kwarg wins; otherwise the spec's default is applied so
-    # the workflow never depends on whatever filename was saved in the JSON.
+    # Text-encoder default (e.g. the Qwen 3 VL quant shared by Ideogram 4 and
+    # Qwen Image 2.1). An explicit ``text_encoder`` kwarg wins; otherwise the
+    # spec's default is applied so the workflow never depends on whatever
+    # filename was saved in the JSON.
     text_encoder_node = spec.get("text_encoder_node")
     if text_encoder_node is not None:
         effective_encoder = kwargs.get("text_encoder") or spec.get("default_text_encoder")
