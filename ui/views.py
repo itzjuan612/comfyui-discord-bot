@@ -424,11 +424,11 @@ class UpscaleButton(Button):
 
 class EditImageModal(Modal):
     """Modal form for editing a generated image via the single-image
-    (1 image / edit) img2img workflow using Flux 2 Klein 4B Base.
+    (1 image / edit) flux_edit workflow using Flux 2 Klein 4B Base.
 
     The first image of the clicked message is used as the source. The form
     takes prompt, privacy (stealth/public), cfg, steps, and sampler;
-    left-empty fields fall back to the user's saved img2img defaults.
+    left-empty fields fall back to the user's saved flux_edit defaults.
     """
 
     def __init__(self, default_stealth: bool = False):
@@ -475,7 +475,7 @@ class EditImageModal(Modal):
         cfg = _parse_opt_float(self.cfg_input.value)
         steps = _parse_opt_int(self.steps_input.value)
         sampler = _parse_opt_str(self.sampler_input.value)
-        # Megapixels is no longer a modal field; fall back to the saved img2img default.
+        # Megapixels is no longer a modal field; fall back to the saved flux_edit default.
         megapixels = None
 
         if sampler is not None and sampler not in SAMPLER_NAMES:
@@ -525,16 +525,16 @@ class EditImageModal(Modal):
             await reply_error(interaction, "\u274c The single-image edit workflow is not configured.", target=progress_msg)
             return
 
-        # Fall back to the user's saved img2img defaults for unset fields.
+        # Fall back to the user's saved flux_edit defaults for unset fields.
         saved = user_settings.get_settings(interaction.user.id)
         if cfg is None:
-            cfg = saved.get("img2img_cfg")
+            cfg = saved.get("flux_edit_cfg")
         if steps is None:
-            steps = saved.get("img2img_steps")
+            steps = saved.get("flux_edit_steps")
         if sampler is None:
-            sampler = saved.get("img2img_sampler")
+            sampler = saved.get("flux_edit_sampler")
         if megapixels is None:
-            megapixels = saved.get("img2img_megapixels")
+            megapixels = saved.get("flux_edit_megapixels")
 
         try:
             data1 = await download_image(image_attachments[0].url)
@@ -581,7 +581,7 @@ class EditImageModal(Modal):
 class EditButton(Button):
     """Green 'Edit Image' button shown on every generated output.
 
-    Opens a modal to run the single-image (1 image / edit) img2img workflow
+    Opens a modal to run the single-image (1 image / edit) flux_edit workflow
     on the image(s) in the message.
     """
 

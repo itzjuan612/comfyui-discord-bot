@@ -35,7 +35,7 @@ BOT_OWNER_ID = int(config.get("owner", {}).get("id", 0) or 0)
 T2I_MODELS = [m for m, cfg in config["models"].items() if "t2i" in cfg]
 UPSCALE_MODELS = [m for m, cfg in config["models"].items() if "upscale" in cfg]
 I2I_MODELS = [m for m, cfg in config["models"].items()
-              if "i2i_single" in cfg or "i2i_multi" in cfg]
+              if "i2i_single" in cfg or "i2i_multi" in cfg or "i2i" in cfg]
 UPSCALE_CHOICES = [app_commands.Choice(name=m, value=m) for m in UPSCALE_MODELS]
 
 # Human-friendly labels for the upscale model selection buttons.

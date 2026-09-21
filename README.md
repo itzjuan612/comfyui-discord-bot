@@ -11,7 +11,9 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | :art: Ideogram (`/ideogram`) | Generate professional images with Ideogram 4 by using JSON to carefully sketch your image. Supports seed, quality preset, megapixels, and aspect ratio. |
 | :art: Stable Diffusion XL (`/sdxl`) | Generate images with versatile SDXL models. Supports prompt, negative prompt, seed, steps, width/height, and CFG. Can use any checkpoint in ComfyUI's `models/checkpoints` folder via the `model` parameter, plus up to two LoRAs (`lora1`, `lora2`) with a unified `lora_strength`. Automatically uses separate CLIP/VAE loaders for checkpoints that lack a bundled text encoder/VAE (split checkpoints). |
 | :art: Z-Image Turbo & Base (`/zimage`) | Generate high quality images with very fast and light Z-Image models. Supports natural language prompts, up to two LoRAs, multiple Z-Image models, and also batch images. Other params are steps, width/height, and CFG. |
-| :pencil2: Image-to-Image (`/img2img`) | Edit one image or combine two images using Flux 2 Klein 4B Base. Supports cfg, steps, sampler, megapixels. |
+| :art: Qwen Image 2.1 (`/qwen_image`) | Generate images with Qwen Image 2.1. Supports prompt, negative prompt, steps, megapixels, aspect ratio, sampler, scheduler, CFG, seed, and batch size. |
+| :pencil2: Flux Edit (`/flux_edit`) | Edit one image or combine two images using Flux 2 Klein 4B Base. Supports cfg, steps, sampler, megapixels. |
+| :pencil2: Qwen Edit (`/qwen_edit`) | Edit one image or combine two images using Qwen Image 2.1. Supports cfg, steps, sampler, scheduler. Output resolution follows the input image(s). |
 | :mag: Upscale (`/upscale`) | Upscale an attached image using SDXL, SeedVR2, or FlashVSR. SDXL shows a picker to use any checkpoint in `models/checkpoints`. Supports custom scale factor, prompt, negative, and strength. |
 | :speech_balloon: Prompt Generation (`/gen_prompt`) | Converts a natural-language idea into a structured Ideogram 4 JSON caption using an LLM (OpenAI-compatible endpoint). Includes reasoning-effort selection. |
 | :clipboard: LLM Model List (`/llm_models`) | Lists all models available on the configured LLM endpoint. |
@@ -65,7 +67,22 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 
 > **Split checkpoints:** Some checkpoints do not ship with their own text encoder and VAE. The SDXL workflow contains a `PrimitiveBoolean` switch driving WAS-node-suite `CLIP Input Switch` and `VAE Input Switch` nodes: when `False` it uses the checkpoint's bundled CLIP/VAE, when `True` it uses the separate `qwen_3_06b_base` CLIP and `qwen_image_vae` VAE. The bot detects a split checkpoint automatically: if generation fails because the checkpoint has no valid bundled CLIP, it flips the switch to `True` and retries. Each newly detected split checkpoint is cached (in memory and persisted in `user_settings.db`), so subsequent generations for that checkpoint use the separate loaders directly without an error/retry round trip.
 
-### `/img2img`
+### `/qwen_image`
+
+| Parameter | Description |
+| --- | --- |
+| `prompt` | Text prompt (required) |
+| `negative` | Negative prompt |
+| `steps` | Sampling steps |
+| `megapixels` | Target resolution in MP |
+| `aspect_ratio` | Aspect ratio preset |
+| `sampler` / `scheduler` | Sampler and scheduler (user or workflow default if none is chosen) |
+| `cfg` | Guidance scale |
+| `seed` | Seed (optional) |
+| `batch_size` | Number of images to generate at once |
+| `stealth` | Ephemeral output |
+
+### `/flux_edit`
 
 | Parameter | Description |
 | --- | --- |
@@ -78,6 +95,21 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | `sampler` | Sampler name (optional) |
 | `megapixels` | Target MP (optional) |
 | `stealth` | Ephemeral output |
+
+### `/qwen_edit`
+
+| Parameter | Description |
+| --- | --- |
+| `image` | First input image |
+| `prompt` | Description of the desired edit |
+| `image2` | Second input image (optional, for combining two images) |
+| `steps` | Steps (optional) |
+| `cfg` | CFG (optional) |
+| `sampler` | Sampler name (optional) |
+| `scheduler` | Scheduler name (optional) |
+| `stealth` | Ephemeral output |
+
+> Output resolution follows the input image(s); there are no resolution parameters. When `image2` is omitted, the second-image node is dropped from the workflow.
 
 ### `/gen_prompt`
 
@@ -114,7 +146,8 @@ View or update per-user defaults:
 - `sdxl_checkpoint`, `sdxl_cfg`, `sdxl_steps`, `sdxl_sampler`, `sdxl_scheduler` (SDXL)
 - `zimage_model`, `zimage_cfg`, `zimage_steps`, `zimage_sampler`, `zimage_scheduler` (Z-Image)
 - `ideogram_quality`, `ideogram_megapixels`, `ideogram_aspect_ratio` (Ideogram)
-- `img2img_cfg`, `img2img_steps`, `img2img_sampler`, `img2img_megapixels` (img2img Flux.2 Klein)
+- `flux_edit_cfg`, `flux_edit_steps`, `flux_edit_sampler`, `flux_edit_megapixels` (flux_edit Flux.2 Klein)
+- `qwen_steps`, `qwen_cfg`, `qwen_sampler`, `qwen_scheduler`, `qwen_megapixels`, `qwen_aspect_ratio` (Qwen Image 2.1, shared by `/qwen_image` and `/qwen_edit`)
 - `stealth` (default privacy)
 
 ### `/flush`
@@ -165,7 +198,7 @@ Key modules:
 | `nsfw_guard.py` | Keyword NSFW filter + EraX-NSFW-V1.0 CPU ONNX image detector |
 | `download_erax.py` | Downloads EraX-NSFW-V1.0 detector on boot if it's missing |
 | `diag.py` | Standalone diagnostic: prints local vs. server-side slash commands for debugging sync issues |
-| `cogs/` | Slash-command Cog extensions (`commands.Cog` classes with `setup()`, loaded via `load_extension`): `generation.py` (/ideogram, /sdxl, /zimage, /upscale, /img2img, /flush), `llm.py` (/gen_prompt, /llm_models), `settings.py` (/settings, /reset_settings), `admin.py` (/admin, /reload) |
+| `cogs/` | Slash-command Cog extensions (`commands.Cog` classes with `setup()`, loaded via `load_extension`): `generation.py` (/ideogram, /sdxl, /zimage, /qwen_image, /upscale, /flux_edit, /qwen_edit, /flush), `llm.py` (/gen_prompt, /llm_models), `settings.py` (/settings, /reset_settings), `admin.py` (/admin, /reload) |
 | `ui/views.py` | All interactive UI: generation buttons (Retry/Delete/Upscale/Edit), checkpoint picker, reasoning-effort picker, and admin panel views |
 | `ui/autocomplete.py` | Discord slash-command autocomplete handlers (LLM model, SDXL checkpoint, LoRA) |
 
@@ -252,7 +285,7 @@ comfyuidiscord/
 |   `-- erax_nsfw.onnx        # EraX-NSFW-V1.0 CPU ONNX detector (auto-downloaded if missing)
 |-- cogs/
 |   |-- __init__.py         # Package marker
-|   |-- generation.py       # /ideogram, /sdxl, /upscale, /img2img, /flush
+|   |-- generation.py       # /ideogram, /sdxl, /zimage, /qwen_image, /upscale, /flux_edit, /qwen_edit, /flush
 |   |-- llm.py              # /gen_prompt, /llm_models
 |   |-- settings.py         # /settings, /reset_settings
 |   `-- admin.py            # /admin, /reload
@@ -299,4 +332,4 @@ comfyuidiscord/
 - **NSFW negative prompts:** The NSFW keyword filter ignores negative prompts, so a negative prompt containing "nsfw" (meaning "exclude nsfw") is not blocked.
 - **Stored prompts are re-gated:** Retry, the SDXL upscale checkpoint picker, and Edit Image re-run the keyword NSFW gate on the stored/original prompt (and the current channel's NSFW marking) before spending GPU time, so a message saved before a channel lost its NSFW tag can't be regenerated with a bypass.
 - **Parameter clamping:** GPU-heavy slash-command parameters are bounded by Discord `Range` validators and re-checked at runtime — steps ≤ 150, width/height ≤ 4096, batch_size ≤ 8, upscale scale ≤ 4, megapixels ≤ 8, `max_tokens` ≤ 4096 — and generation prompts shown in embeds are truncated so embeds never exceed Discord's limits.
-- **Attachment validation:** Images attached to `/upscale` and `/img2img` are downloaded through one helper that checks the content type is an image and caps size before uploading to ComfyUI.
+- **Attachment validation:** Images attached to `/upscale`, `/flux_edit`, and `/qwen_edit` are downloaded through one helper that checks the content type is an image and caps size before uploading to ComfyUI.

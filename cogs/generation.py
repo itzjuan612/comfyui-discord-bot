@@ -26,7 +26,7 @@ from job_queue import job_queue
 
 async def run_t2i_generation(interaction: discord.Interaction, model: str,
                              prompt: str, stealth: bool, gen_kwargs: dict):
-    """Shared generation pipeline for the /ideogram and /sdxl commands.
+    """Shared generation pipeline for the T2I commands (/ideogram, /sdxl, /zimage, /qwen_image).
 
     ``gen_kwargs`` carries the model-specific parameters (plus prompt/seed).
     The embed description and saved retry parameters are built from
@@ -67,6 +67,17 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
             if res_parts:
                 base_lines.append("**Resolution:** " + ", ".join(res_parts))
             base_lines.append(f"**Output:** {image_resolution(images[0])}")
+        elif model == "qwen_image":
+            res_parts = []
+            megapixels = gen_kwargs.get("megapixels")
+            if megapixels:
+                res_parts.append(f"{megapixels} MP")
+            aspect_ratio = gen_kwargs.get("aspect_ratio")
+            if aspect_ratio:
+                res_parts.append(aspect_ratio)
+            if res_parts:
+                base_lines.append("**Resolution:** " + ", ".join(res_parts))
+            base_lines.append(f"**Output:** {image_resolution(images[0])}")
         else:
             base_lines.append(f"**Resolution:** {image_resolution(images[0])}")
         base_desc = "\n".join(base_lines)
@@ -88,7 +99,7 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
 
 
 class GenerationCog(commands.Cog):
-    """ComfyUI generation commands: /ideogram /sdxl /zimage /upscale /img2img /flush"""
+    """ComfyUI generation commands: /ideogram /sdxl /zimage /qwen_image /upscale /flux_edit /qwen_edit /flush"""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -411,6 +422,82 @@ class GenerationCog(commands.Cog):
         await run_t2i_generation(interaction, "zimage", prompt, stealth, gen_kwargs)
 
 
+    @app_commands.command(name="qwen_image", description="Generate an image with Qwen Image 2.1")
+    @app_commands.choices(sampler=SAMPLER_CHOICES)
+    @app_commands.choices(scheduler=SCHEDULER_CHOICES)
+    @app_commands.choices(aspect_ratio=ASPECT_RATIO_CHOICES)
+    @app_commands.describe(prompt="Text prompt")
+    @app_commands.describe(negative="Negative prompt")
+    @app_commands.describe(steps="Sampling steps")
+    @app_commands.describe(megapixels="Target resolution in megapixels")
+    @app_commands.describe(aspect_ratio="Aspect ratio preset")
+    @app_commands.describe(sampler="Sampler (optional)")
+    @app_commands.describe(scheduler="Scheduler (optional)")
+    @app_commands.describe(cfg="CFG guidance scale")
+    @app_commands.describe(seed="Seed (optional)")
+    @app_commands.describe(batch_size="Number of images to generate (optional)")
+    @app_commands.describe(stealth="Ephemeral output, visible only to you")
+    async def qwen_image(self, interaction: discord.Interaction, prompt: str,
+                         negative: str | None = None,
+                         steps: Optional[app_commands.Range[int, 1, 150]] = None,
+                         megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
+                         aspect_ratio: str | None = None,
+                         sampler: str | None = None,
+                         scheduler: str | None = None,
+                         cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+                         seed: int | None = None,
+                         batch_size: Optional[app_commands.Range[int, 1, 8]] = None,
+                         stealth: bool | None = None):
+        if stealth is None:
+            stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
+        if await ban_guard(interaction):
+            return
+        if not await check_cooldown(interaction):
+            await interaction.response.send_message(
+                content="\u23f3 Please wait before requesting another image.", ephemeral=True
+            )
+            return
+
+        if nsfw_blocked(interaction, prompt):
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+            )
+            msg = await interaction.original_response()
+            schedule_message_deletion(msg)
+            return
+
+        settings = user_settings.get_settings(interaction.user.id)
+        if negative is None:
+            negative = settings["negative_prompt"] or None
+        if steps is None:
+            steps = settings.get("qwen_steps")
+        if cfg is None:
+            cfg = settings.get("qwen_cfg")
+        if sampler is None:
+            sampler = settings.get("qwen_sampler")
+        if scheduler is None:
+            scheduler = settings.get("qwen_scheduler")
+        if megapixels is None:
+            megapixels = settings.get("qwen_megapixels")
+        if aspect_ratio is None:
+            aspect_ratio = settings.get("qwen_aspect_ratio")
+        aspect_ratio = normalize_aspect_ratio(aspect_ratio)
+
+        gen_kwargs = {
+            "prompt": prompt,
+            "negative": negative,
+            "seed": seed,
+            "steps": steps,
+            "cfg": cfg,
+            "sampler": sampler,
+            "scheduler": scheduler,
+            "megapixels": megapixels,
+            "aspect_ratio": aspect_ratio,
+            "batch_size": batch_size,
+        }
+        await run_t2i_generation(interaction, "qwen_image", prompt, stealth, gen_kwargs)
+
+
     @app_commands.command(name="upscale", description="Upscale an image from your gallery")
     @app_commands.choices(model=UPSCALE_CHOICES)
     @app_commands.describe(image="Image to upscale (attach from your gallery)")
@@ -538,7 +625,7 @@ class GenerationCog(commands.Cog):
             await reply_error(interaction, f"\u274c Upscaling failed: {exc}")
 
 
-    @app_commands.command(name="img2img", description="Edit one image (or combine two) into a new image using Flux 2 Klein 4B Base")
+    @app_commands.command(name="flux_edit", description="Edit one image (or combine two) into a new image using Flux 2 Klein 4B Base")
     @app_commands.choices(workflow=I2I_WORKFLOW_CHOICES)
     @app_commands.choices(sampler=SAMPLER_CHOICES)
     @app_commands.describe(workflow="Workflow: 1 image (edit) or 2 images (combine)")
@@ -550,7 +637,7 @@ class GenerationCog(commands.Cog):
     @app_commands.describe(sampler="Sampler (optional)")
     @app_commands.describe(megapixels="Target resolution in megapixels (optional)")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
-    async def img2img(self, interaction: discord.Interaction, workflow: str,
+    async def flux_edit(self, interaction: discord.Interaction, workflow: str,
                       image: discord.Attachment, prompt: str,
                       image2: discord.Attachment | None = None,
                       cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
@@ -592,7 +679,7 @@ class GenerationCog(commands.Cog):
         progress_msg = await interaction.original_response()
         progress = ProgressUpdater(progress_msg, lane="comfyui")
         log = logging.getLogger("bot")
-        log.debug("img2img: workflow=%s prompt=%r", workflow, prompt)
+        log.debug("flux_edit: workflow=%s prompt=%r", workflow, prompt)
 
         model = "flux2_klein"
         spec_key = "i2i_single" if workflow == "single" else "i2i_multi"
@@ -615,20 +702,20 @@ class GenerationCog(commands.Cog):
         except Exception as exc:
             progress.done = True
             progress.disarm()
-            log.exception("img2img download/upload failed")
+            log.exception("flux_edit download/upload failed")
             await reply_error(interaction, f"\u274c Could not process the input images: {exc}", target=progress_msg)
             return
 
-        # Fall back to the user's saved img2img defaults for any parameter left unset.
+        # Fall back to the user's saved flux_edit defaults for any parameter left unset.
         saved = user_settings.get_settings(interaction.user.id)
         if cfg is None:
-            cfg = saved.get("img2img_cfg")
+            cfg = saved.get("flux_edit_cfg")
         if steps is None:
-            steps = saved.get("img2img_steps")
+            steps = saved.get("flux_edit_steps")
         if sampler is None:
-            sampler = saved.get("img2img_sampler")
+            sampler = saved.get("flux_edit_sampler")
         if megapixels is None:
-            megapixels = saved.get("img2img_megapixels")
+            megapixels = saved.get("flux_edit_megapixels")
 
         gen_kwargs = {
             "prompt": prompt,
@@ -664,8 +751,124 @@ class GenerationCog(commands.Cog):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("img2img failed")
+            log.exception("flux_edit failed")
             await reply_error(interaction, f"\u274c Image-to-image failed: {exc}", target=progress_msg)
+
+    @app_commands.command(name="qwen_edit", description="Edit one image (or combine two) into a new image using Qwen Image 2.1")
+    @app_commands.choices(sampler=SAMPLER_CHOICES)
+    @app_commands.choices(scheduler=SCHEDULER_CHOICES)
+    @app_commands.describe(image="First input image (attach from your gallery)")
+    @app_commands.describe(prompt="Prompt describing the desired edit")
+    @app_commands.describe(image2="Second input image (optional, for combining two images)")
+    @app_commands.describe(steps="Sampling steps (optional)")
+    @app_commands.describe(cfg="CFG guidance scale (optional)")
+    @app_commands.describe(sampler="Sampler (optional)")
+    @app_commands.describe(scheduler="Scheduler (optional)")
+    @app_commands.describe(stealth="Ephemeral output, visible only to you")
+    async def qwen_edit(self, interaction: discord.Interaction,
+                        image: discord.Attachment, prompt: str,
+                        image2: discord.Attachment | None = None,
+                        steps: Optional[app_commands.Range[int, 1, 150]] = None,
+                        cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+                        sampler: str | None = None,
+                        scheduler: str | None = None,
+                        stealth: bool | None = None):
+        if stealth is None:
+            stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
+        if await ban_guard(interaction):
+            return
+        if not await check_cooldown(interaction):
+            await interaction.response.send_message(
+                content="\u23f3 Please wait before requesting another image.", ephemeral=True
+            )
+            return
+
+        if nsfw_blocked(interaction, prompt):
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+            )
+            msg = await interaction.original_response()
+            schedule_message_deletion(msg)
+            return
+
+        await interaction.response.send_message(
+            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            ephemeral=stealth,
+        )
+        progress_msg = await interaction.original_response()
+        progress = ProgressUpdater(progress_msg, lane="comfyui")
+        log.debug("qwen_edit: two_images=%s prompt=%r", image2 is not None, prompt)
+
+        model = "qwen_image"
+        spec = config["models"].get(model, {}).get("i2i")
+        if spec is None:
+            progress.done = True
+            progress.disarm()
+            await reply_error(interaction, "\u274c Workflow 'i2i' is not configured.", target=progress_msg)
+            return
+
+        # Download and upload the input image(s) to ComfyUI.
+        try:
+            data1 = await download_image(image.url)
+            uploaded1 = await comfy.upload_image(data1, f"discord_{uuid_hex()}.png")
+            uploaded2 = None
+            if image2 is not None:
+                data2 = await download_image(image2.url)
+                uploaded2 = await comfy.upload_image(data2, f"discord_{uuid_hex()}.png")
+        except Exception as exc:
+            progress.done = True
+            progress.disarm()
+            log.exception("qwen_edit download/upload failed")
+            await reply_error(interaction, f"\u274c Could not process the input images: {exc}", target=progress_msg)
+            return
+
+        # Fall back to the user's shared Qwen defaults for any parameter left unset.
+        saved = user_settings.get_settings(interaction.user.id)
+        if steps is None:
+            steps = saved.get("qwen_steps")
+        if cfg is None:
+            cfg = saved.get("qwen_cfg")
+        if sampler is None:
+            sampler = saved.get("qwen_sampler")
+        if scheduler is None:
+            scheduler = saved.get("qwen_scheduler")
+
+        gen_kwargs = {
+            "prompt": prompt,
+            "seed": None,
+            "steps": steps,
+            "cfg": cfg,
+            "sampler": sampler,
+            "scheduler": scheduler,
+            "image_filename": uploaded1,
+            # None when omitted: apply_spec drops node 475 + images.image_2.
+            "image2_filename": uploaded2,
+        }
+
+        try:
+            job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
+            fut = job_queue.submit(job, lane="comfyui", name="qwen_image_i2i")
+            progress.arm(job)
+            images, meta = await fut
+            progress.done = True
+            display_model = meta.get("ckpt_name") or model
+            workflow_label = "2 images (combine)" if uploaded2 is not None else "1 image (edit)"
+            base_desc = "\n".join([
+                f"**Model:** {display_model}",
+                f"**Workflow:** {workflow_label}",
+                f"**Prompt:** {prompt[:3800]}",
+                f"**Resolution:** {image_resolution(images[0])}",
+            ])
+            await deliver_generation(
+                interaction, images=images, meta=meta, base_desc=base_desc,
+                color=int(discord.Color.purple()), spec=spec, model=model,
+                suffix="i2i", stealth=stealth,
+                save_kwargs={**gen_kwargs, "seed": None},
+            )
+        except Exception as exc:
+            progress.done = True
+            log.exception("qwen_edit failed")
+            await reply_error(interaction, f"\u274c Image edit failed: {exc}", target=progress_msg)
     @app_commands.command(name="flush", description="Unload all models and execution cache from ComfyUI")
     async def flush(self, interaction: discord.Interaction):
         if not can_manage(interaction.user.id):

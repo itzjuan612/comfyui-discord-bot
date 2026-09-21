@@ -36,11 +36,20 @@ class SettingsCog(commands.Cog):
     @app_commands.describe(ideogram_quality="Default Ideogram quality preset (Turbo / Default / Quality)")
     @app_commands.describe(ideogram_megapixels="Default Ideogram resolution in megapixels")
     @app_commands.describe(ideogram_aspect_ratio="Default Ideogram aspect ratio preset")
-    @app_commands.describe(img2img_cfg="Default img2img CFG guidance scale")
-    @app_commands.describe(img2img_steps="Default img2img sampling steps")
-    @app_commands.choices(img2img_sampler=SAMPLER_CHOICES)
-    @app_commands.describe(img2img_sampler="Default img2img sampler")
-    @app_commands.describe(img2img_megapixels="Default img2img resolution in megapixels")
+    @app_commands.describe(flux_edit_cfg="Default flux_edit CFG guidance scale")
+    @app_commands.describe(flux_edit_steps="Default flux_edit sampling steps")
+    @app_commands.choices(flux_edit_sampler=SAMPLER_CHOICES)
+    @app_commands.describe(flux_edit_sampler="Default flux_edit sampler")
+    @app_commands.describe(flux_edit_megapixels="Default flux_edit resolution in megapixels")
+    @app_commands.describe(qwen_steps="Default Qwen sampling steps (shared by /qwen_image and /qwen_edit)")
+    @app_commands.describe(qwen_cfg="Default Qwen CFG guidance scale (shared by /qwen_image and /qwen_edit)")
+    @app_commands.choices(qwen_sampler=SAMPLER_CHOICES)
+    @app_commands.choices(qwen_scheduler=SCHEDULER_CHOICES)
+    @app_commands.describe(qwen_sampler="Default Qwen sampler (shared by /qwen_image and /qwen_edit)")
+    @app_commands.describe(qwen_scheduler="Default Qwen scheduler (shared by /qwen_image and /qwen_edit)")
+    @app_commands.describe(qwen_megapixels="Default Qwen resolution in megapixels (used by /qwen_image)")
+    @app_commands.choices(qwen_aspect_ratio=ASPECT_RATIO_CHOICES)
+    @app_commands.describe(qwen_aspect_ratio="Default Qwen aspect ratio preset (used by /qwen_image)")
     @app_commands.describe(stealth="Default privacy (ephemeral) for all your generations")
     @app_commands.autocomplete(sdxl_checkpoint=_sdxl_model_autocomplete)
     @app_commands.autocomplete(zimage_model=_zimage_model_autocomplete)
@@ -62,10 +71,16 @@ class SettingsCog(commands.Cog):
                         ideogram_quality: str | None = None,
                         ideogram_megapixels: int | None = None,
                         ideogram_aspect_ratio: str | None = None,
-                        img2img_cfg: float | None = None,
-                        img2img_steps: int | None = None,
-                        img2img_sampler: str | None = None,
-                        img2img_megapixels: int | None = None,
+                        flux_edit_cfg: float | None = None,
+                        flux_edit_steps: int | None = None,
+                        flux_edit_sampler: str | None = None,
+                        flux_edit_megapixels: int | None = None,
+                        qwen_steps: int | None = None,
+                        qwen_cfg: float | None = None,
+                        qwen_sampler: str | None = None,
+                        qwen_scheduler: str | None = None,
+                        qwen_megapixels: int | None = None,
+                        qwen_aspect_ratio: str | None = None,
                         stealth: bool | None = None,
                         view: bool = False):
         user_id = interaction.user.id
@@ -80,8 +95,11 @@ class SettingsCog(commands.Cog):
             or zimage_sampler is not None or zimage_scheduler is not None
             or ideogram_quality is not None or ideogram_megapixels is not None
             or ideogram_aspect_ratio is not None
-            or img2img_cfg is not None or img2img_steps is not None
-            or img2img_sampler is not None or img2img_megapixels is not None
+            or flux_edit_cfg is not None or flux_edit_steps is not None
+            or flux_edit_sampler is not None or flux_edit_megapixels is not None
+            or qwen_steps is not None or qwen_cfg is not None
+            or qwen_sampler is not None or qwen_scheduler is not None
+            or qwen_megapixels is not None or qwen_aspect_ratio is not None
             or stealth is not None
         ):
             s = user_settings.get_settings(user_id)
@@ -109,10 +127,16 @@ class SettingsCog(commands.Cog):
                 "ideogram_quality": ideogram_quality,
                 "ideogram_megapixels": ideogram_megapixels,
                 "ideogram_aspect_ratio": ideogram_aspect_ratio,
-                "img2img_cfg": img2img_cfg,
-                "img2img_steps": img2img_steps,
-                "img2img_sampler": img2img_sampler,
-                "img2img_megapixels": img2img_megapixels,
+                "flux_edit_cfg": flux_edit_cfg,
+                "flux_edit_steps": flux_edit_steps,
+                "flux_edit_sampler": flux_edit_sampler,
+                "flux_edit_megapixels": flux_edit_megapixels,
+                "qwen_steps": qwen_steps,
+                "qwen_cfg": qwen_cfg,
+                "qwen_sampler": qwen_sampler,
+                "qwen_scheduler": qwen_scheduler,
+                "qwen_megapixels": qwen_megapixels,
+                "qwen_aspect_ratio": qwen_aspect_ratio,
                 "stealth": stealth,
             }.items() if v is not None
         }
