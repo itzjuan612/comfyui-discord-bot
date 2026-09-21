@@ -193,6 +193,19 @@ models:
       model_node: "459:451"
       default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
       text_encoder_node: "459:453"
+      # default_text_encoder is also applied to this CLIPLoader, which feeds
+      # the optional Qwen 8B prompt enhancer (TextGenerate node).
+      enhancer_text_encoder_node: "469"
+      # The positive prompt enters through the Google Translate node (auto -> en)
+      # and the enhance switch; the encode node's prompt input is a link into
+      # that switch, so the prompt must be written here instead of prompt_node.
+      prompt_input_node: "468"
+      prompt_input_key: text
+      # PrimitiveBoolean "Enhance prompt?": True reroutes the prompt through the
+      # Qwen 8B prompt enhancer before encoding. When the enhance kwarg is None
+      # this node is left untouched (workflow default: false).
+      enhance_node: "473"
+      enhance_key: value
       prompt_node: "459:452"
       prompt_key: prompt
       negative_node: "459:452"
