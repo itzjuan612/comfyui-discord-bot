@@ -119,7 +119,7 @@ models:
       model_node_unconditional: "98:154"
       # Text encoder (CLIPLoader). Same Qwen 3 VL file as Qwen Image 2.1, so a
       # different quant can be swapped in here.
-      default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
+      default_text_encoder: "qwen3vl_8b_int8_convrot.safetensors"
       text_encoder_node: "98:14"
       prompt_node: "98:24"
       prompt_key: text
@@ -191,7 +191,7 @@ models:
       file: workflows/t2i/qwen_image_21_t2i.json
       default_model: "qwen_image_2.1_int8_convrot.safetensors"
       model_node: "459:451"
-      default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
+      default_text_encoder: "qwen3vl_8b_int8_convrot.safetensors"
       text_encoder_node: "459:453"
       # default_text_encoder is also applied to this CLIPLoader, which feeds
       # the optional Qwen 8B prompt enhancer (TextGenerate node).
@@ -228,7 +228,7 @@ models:
       file: workflows/i2i/qwen_image_21_i2i.json
       default_model: "qwen_image_2.1_int8_convrot.safetensors"
       model_node: "459:451"
-      default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
+      default_text_encoder: "qwen3vl_8b_int8_convrot.safetensors"
       text_encoder_node: "459:453"
       prompt_node: "459:474"
       prompt_key: prompt
