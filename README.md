@@ -140,15 +140,19 @@ After selecting the reasoning effort, the bot composes the prompt via the Ideogr
 
 ### `/settings` / `/reset_settings`
 
-View or update per-user defaults:
+Per-user defaults are split into subcommands (Discord caps each command at 25 options, and the per-model defaults exceed that):
 
-- `negative_prompt`, `width`, `height`
-- `sdxl_checkpoint`, `sdxl_cfg`, `sdxl_steps`, `sdxl_sampler`, `sdxl_scheduler` (SDXL)
-- `zimage_model`, `zimage_cfg`, `zimage_steps`, `zimage_sampler`, `zimage_scheduler` (Z-Image)
-- `ideogram_quality`, `ideogram_megapixels`, `ideogram_aspect_ratio` (Ideogram)
-- `flux_edit_cfg`, `flux_edit_steps`, `flux_edit_sampler`, `flux_edit_megapixels` (flux_edit Flux.2 Klein)
-- `qwen_steps`, `qwen_cfg`, `qwen_sampler`, `qwen_scheduler`, `qwen_megapixels`, `qwen_aspect_ratio` (Qwen Image 2.1, shared by `/qwen_image` and `/qwen_edit`)
-- `stealth` (default privacy)
+| Subcommand | Defaults |
+| --- | --- |
+| `/settings view` | Show all your saved defaults |
+| `/settings general` | `negative_prompt`, `width`, `height`, `stealth` |
+| `/settings sdxl` | `sdxl_checkpoint`, `sdxl_steps`, `sdxl_cfg`, `sdxl_sampler`, `sdxl_scheduler` |
+| `/settings zimage` | `zimage_model`, `zimage_steps`, `zimage_cfg`, `zimage_sampler`, `zimage_scheduler` |
+| `/settings ideogram` | `ideogram_quality`, `ideogram_megapixels`, `ideogram_aspect_ratio` |
+| `/settings flux_edit` | `flux_edit_cfg`, `flux_edit_steps`, `flux_edit_sampler`, `flux_edit_megapixels` |
+| `/settings qwen` | `qwen_steps`, `qwen_cfg`, `qwen_sampler`, `qwen_scheduler`, `qwen_megapixels`, `qwen_aspect_ratio` (shared by `/qwen_image` and `/qwen_edit`) |
+
+Running a subcommand with no parameters shows your current defaults. `/reset_settings` clears everything.
 
 ### `/flush`
 
