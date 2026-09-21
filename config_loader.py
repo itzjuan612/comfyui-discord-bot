@@ -119,10 +119,10 @@ models:
       # Node IDs in this workflow are prefixed "98:" (from ComfyUI's
       # graph export), so they must be quoted as strings in YAML.
       file: workflows/t2i/Ideogram_4_generator.json
-      default_model: "ideogram4_fp8_scaled.safetensors"
+      default_model: "ideogram4_int8_convrot.safetensors"
       model_node: "98:23"
       # The workflow has a second UNet loader for the unconditional branch.
-      default_model_unconditional: "ideogram4_unconditional_fp8_scaled.safetensors"
+      default_model_unconditional: "ideogram4_unconditional_int8_convrot.safetensors"
       model_node_unconditional: "98:154"
       # Text encoder (CLIPLoader). Same Qwen 3 VL file as Qwen Image 2.1, so a
       # different quant can be swapped in here.
