@@ -124,6 +124,10 @@ models:
       # The workflow has a second UNet loader for the unconditional branch.
       default_model_unconditional: "ideogram4_unconditional_fp8_scaled.safetensors"
       model_node_unconditional: "98:154"
+      # Text encoder (CLIPLoader). Same Qwen 3 VL file as Qwen Image 2.1, so a
+      # different quant can be swapped in here.
+      default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
+      text_encoder_node: "98:14"
       prompt_node: "98:24"
       prompt_key: text
       # Seed flows through the Random Number node (its "seed" input seeds the RNG).
@@ -187,6 +191,50 @@ models:
       sampler_node: "92:102"
       image_nodes: ["76", "81"]
       megapixels_nodes: ["92:110", "92:85"]
+  qwen_image:
+    t2i:
+      # Node IDs in this workflow are prefixed "459:" (from ComfyUI's graph
+      # export), so they must be quoted as strings in YAML.
+      file: workflows/t2i/qwen_image_21_t2i.json
+      default_model: "qwen_image_2.1_int8_convrot.safetensors"
+      model_node: "459:451"
+      default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
+      text_encoder_node: "459:453"
+      prompt_node: "459:452"
+      prompt_key: prompt
+      negative_node: "459:452"
+      negative_key: negative_prompt
+      seed_node: "459:458"
+      seed_key: seed
+      steps_node: "459:458"
+      cfg_node: "459:458"
+      sampler_node: "459:458"
+      # ResolutionSelector node: megapixels + aspect ratio (replaces width/height).
+      resolution_node: "13"
+      megapixels_key: megapixels
+      aspect_ratio_key: aspect_ratio
+      # EmptyLatentImage node: batch size only (width/height come from node 13).
+      latent_node: "459:456"
+    i2i:
+      # Single spec covers both 1-image and 2-image edits. When no second
+      # image is given, the LoadImage node 475 is removed from the graph and
+      # the "images.image_2" input is dropped from the encode node 459:474.
+      file: workflows/i2i/qwen_image_21_i2i.json
+      default_model: "qwen_image_2.1_int8_convrot.safetensors"
+      model_node: "459:451"
+      default_text_encoder: "qwen3vl_8b_fp8_scaled.safetensors"
+      text_encoder_node: "459:453"
+      prompt_node: "459:474"
+      prompt_key: prompt
+      seed_node: "459:458"
+      seed_key: seed
+      steps_node: "459:458"
+      cfg_node: "459:458"
+      sampler_node: "459:458"
+      image_node: "470"
+      image_key: "images.image_1"
+      image2_node: "475"
+      image2_key: "images.image_2"
 """
 
 

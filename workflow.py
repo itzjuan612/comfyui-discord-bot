@@ -81,6 +81,18 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         if node is not None and node.get("class_type") == "UNETLoader":
             node["inputs"]["unet_name"] = default_model_unconditional
 
+    # Text-encoder default (e.g. the Qwen 3 VL quant shared by Ideogram 4 and
+    # Qwen Image 2.1). An explicit ``text_encoder`` kwarg wins; otherwise the
+    # spec's default is applied so the workflow never depends on whatever
+    # filename was saved in the JSON.
+    text_encoder_node = spec.get("text_encoder_node")
+    if text_encoder_node is not None:
+        effective_encoder = kwargs.get("text_encoder") or spec.get("default_text_encoder")
+        if effective_encoder is not None:
+            node = workflow.get(str(text_encoder_node))
+            if node is not None and node.get("class_type") == "CLIPLoader":
+                node["inputs"]["clip_name"] = effective_encoder
+
     prompt = kwargs.get("prompt")
     negative = kwargs.get("negative")
     seed = kwargs.get("seed")
@@ -109,6 +121,20 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         if image_nodes:
             for node_id, fname in zip(image_nodes, image_files):
                 workflow[str(node_id)]["inputs"]["image"] = fname
+    # Qwen edit's optional second image (single spec for 1- and 2-image
+    # edits). When omitted, the second LoadImage node is removed and its
+    # input is dropped from the encode node so ComfyUI never validates an
+    # empty LoadImage.
+    image2_node = spec.get("image2_node")
+    if image2_node is not None:
+        image2_filename = kwargs.get("image2_filename")
+        if image2_filename:
+            workflow[str(image2_node)]["inputs"]["image"] = image2_filename
+        else:
+            workflow.pop(str(image2_node), None)
+            encode_node = workflow.get(str(spec.get("prompt_node")))
+            if encode_node is not None:
+                encode_node["inputs"].pop(spec.get("image2_key", "images.image_2"), None)
     if width is not None and height is not None:
         latent_id = spec.get("latent_node")
         if latent_id is not None:

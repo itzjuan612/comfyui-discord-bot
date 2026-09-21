@@ -27,10 +27,16 @@ SETTINGS_FIELDS = (
     "ideogram_quality",
     "ideogram_megapixels",
     "ideogram_aspect_ratio",
-    "img2img_cfg",
-    "img2img_steps",
-    "img2img_sampler",
-    "img2img_megapixels",
+    "flux_edit_cfg",
+    "flux_edit_steps",
+    "flux_edit_sampler",
+    "flux_edit_megapixels",
+    "qwen_steps",
+    "qwen_cfg",
+    "qwen_sampler",
+    "qwen_scheduler",
+    "qwen_megapixels",
+    "qwen_aspect_ratio",
     "stealth",
 )
 
@@ -39,10 +45,16 @@ MIGRATED_COLUMNS = {
     "ideogram_quality": "TEXT",
     "ideogram_megapixels": "INTEGER",
     "ideogram_aspect_ratio": "TEXT",
-    "img2img_cfg": "REAL",
-    "img2img_steps": "INTEGER",
-    "img2img_sampler": "TEXT",
-    "img2img_megapixels": "INTEGER",
+    "flux_edit_cfg": "REAL",
+    "flux_edit_steps": "INTEGER",
+    "flux_edit_sampler": "TEXT",
+    "flux_edit_megapixels": "INTEGER",
+    "qwen_steps": "INTEGER",
+    "qwen_cfg": "REAL",
+    "qwen_sampler": "TEXT",
+    "qwen_scheduler": "TEXT",
+    "qwen_megapixels": "INTEGER",
+    "qwen_aspect_ratio": "TEXT",
     "stealth": "INTEGER",
     "sdxl_checkpoint": "TEXT",
     "sdxl_sampler": "TEXT",
@@ -115,6 +127,18 @@ def init_db() -> None:
                     existing.add(new)
                 except sqlite3.OperationalError:
                     pass
+        # Rename: /img2img became /flux_edit; carry saved values over.
+        for old, new in (("img2img_cfg", "flux_edit_cfg"),
+                         ("img2img_steps", "flux_edit_steps"),
+                         ("img2img_sampler", "flux_edit_sampler"),
+                         ("img2img_megapixels", "flux_edit_megapixels")):
+            if old in existing and new not in existing:
+                try:
+                    conn.execute(f"ALTER TABLE user_settings RENAME COLUMN {old} TO {new}")
+                    existing.discard(old)
+                    existing.add(new)
+                except sqlite3.OperationalError:
+                    pass
         for col, sql_type in MIGRATED_COLUMNS.items():
             if col not in existing:
                 conn.execute(f"ALTER TABLE user_settings ADD COLUMN {col} {sql_type}")
@@ -165,7 +189,9 @@ def get_settings(discord_id: int) -> dict:
             "width, height, sdxl_steps, sdxl_cfg, zimage_steps, zimage_cfg, "
             "sdxl_sampler, sdxl_scheduler, zimage_sampler, zimage_scheduler, "
             "ideogram_quality, ideogram_megapixels, ideogram_aspect_ratio, "
-            "img2img_cfg, img2img_steps, img2img_sampler, img2img_megapixels, stealth "
+            "flux_edit_cfg, flux_edit_steps, flux_edit_sampler, flux_edit_megapixels, "
+            "qwen_steps, qwen_cfg, qwen_sampler, qwen_scheduler, "
+            "qwen_megapixels, qwen_aspect_ratio, stealth "
             "FROM user_settings WHERE discord_id = ?",
             (discord_id,),
         ).fetchone()
@@ -180,8 +206,11 @@ def get_settings(discord_id: int) -> dict:
             "zimage_sampler": None, "zimage_scheduler": None,
             "ideogram_quality": None, "ideogram_megapixels": None,
             "ideogram_aspect_ratio": None,
-            "img2img_cfg": None, "img2img_steps": None,
-            "img2img_sampler": None, "img2img_megapixels": None,
+            "flux_edit_cfg": None, "flux_edit_steps": None,
+            "flux_edit_sampler": None, "flux_edit_megapixels": None,
+            "qwen_steps": None, "qwen_cfg": None,
+            "qwen_sampler": None, "qwen_scheduler": None,
+            "qwen_megapixels": None, "qwen_aspect_ratio": None,
             "stealth": False,
         }
     return dict(zip(SETTINGS_FIELDS, row))
@@ -216,8 +245,11 @@ def reset_settings(discord_id: int) -> dict:
             "sdxl_sampler = NULL, sdxl_scheduler = NULL, "
             "zimage_sampler = NULL, zimage_scheduler = NULL, "
             "ideogram_quality = NULL, ideogram_megapixels = NULL, ideogram_aspect_ratio = NULL, "
-            "img2img_cfg = NULL, img2img_steps = NULL, img2img_sampler = NULL, "
-            "img2img_megapixels = NULL, stealth = NULL "
+            "flux_edit_cfg = NULL, flux_edit_steps = NULL, "
+            "flux_edit_sampler = NULL, flux_edit_megapixels = NULL, "
+            "qwen_steps = NULL, qwen_cfg = NULL, qwen_sampler = NULL, "
+            "qwen_scheduler = NULL, qwen_megapixels = NULL, qwen_aspect_ratio = NULL, "
+            "stealth = NULL "
             "WHERE discord_id = ?",
             (discord_id,),
         )
@@ -248,9 +280,15 @@ def format_settings(s: dict) -> str:
         f"{bullet} Ideogram quality: {fmt(s.get('ideogram_quality'))}\n"
         f"{bullet} Ideogram megapixels: {fmt(s.get('ideogram_megapixels'))}\n"
         f"{bullet} Ideogram aspect ratio: {fmt(s.get('ideogram_aspect_ratio'))}\n"
-        f"{bullet} img2img CFG: {fmt(s.get('img2img_cfg'))}\n"
-        f"{bullet} img2img steps: {fmt(s.get('img2img_steps'))}\n"
-        f"{bullet} img2img sampler: {fmt(s.get('img2img_sampler'))}\n"
-        f"{bullet} img2img megapixels: {fmt(s.get('img2img_megapixels'))}\n"
+        f"{bullet} flux_edit CFG: {fmt(s.get('flux_edit_cfg'))}\n"
+        f"{bullet} flux_edit steps: {fmt(s.get('flux_edit_steps'))}\n"
+        f"{bullet} flux_edit sampler: {fmt(s.get('flux_edit_sampler'))}\n"
+        f"{bullet} flux_edit megapixels: {fmt(s.get('flux_edit_megapixels'))}\n"
+        f"{bullet} Qwen steps: {fmt(s.get('qwen_steps'))}\n"
+        f"{bullet} Qwen CFG: {fmt(s.get('qwen_cfg'))}\n"
+        f"{bullet} Qwen sampler: {fmt(s.get('qwen_sampler'))}\n"
+        f"{bullet} Qwen scheduler: {fmt(s.get('qwen_scheduler'))}\n"
+        f"{bullet} Qwen megapixels: {fmt(s.get('qwen_megapixels'))}\n"
+        f"{bullet} Qwen aspect ratio: {fmt(s.get('qwen_aspect_ratio'))}\n"
         f"{bullet} Stealth (ephemeral default): {stealth_default}\n"
     )
