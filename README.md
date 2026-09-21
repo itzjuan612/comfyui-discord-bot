@@ -8,12 +8,12 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 
 | Feature | Description |
 | --- | --- |
+| :art: Qwen Image 2.1 (`/qwen_image`) (NEW!) | Generate images with Qwen Image 2.1. Supports prompt, negative prompt, steps, megapixels, aspect ratio, sampler, scheduler, CFG, seed, and batch size. |
 | :art: Ideogram (`/ideogram`) | Generate professional images with Ideogram 4 by using JSON to carefully sketch your image. Supports seed, quality preset, megapixels, and aspect ratio. |
 | :art: Stable Diffusion XL (`/sdxl`) | Generate images with versatile SDXL models. Supports prompt, negative prompt, seed, steps, width/height, and CFG. Can use any checkpoint in ComfyUI's `models/checkpoints` folder via the `model` parameter, plus up to two LoRAs (`lora1`, `lora2`) with a unified `lora_strength`. Automatically uses separate CLIP/VAE loaders for checkpoints that lack a bundled text encoder/VAE (split checkpoints). |
 | :art: Z-Image Turbo & Base (`/zimage`) | Generate high quality images with very fast and light Z-Image models. Supports natural language prompts, up to two LoRAs, multiple Z-Image models, and also batch images. Other params are steps, width/height, and CFG. |
-| :art: Qwen Image 2.1 (`/qwen_image`) | Generate images with Qwen Image 2.1. Supports prompt, negative prompt, steps, megapixels, aspect ratio, sampler, scheduler, CFG, seed, and batch size. |
-| :pencil2: Flux Edit (`/flux_edit`) | Edit one image or combine two images using Flux 2 Klein 4B Base. Supports cfg, steps, sampler, megapixels. |
-| :pencil2: Qwen Edit (`/qwen_edit`) | Edit one image or combine two images using Qwen Image 2.1. Supports cfg, steps, sampler, scheduler. Output resolution follows the input image(s). |
+| :pencil2: Qwen Edit (`/qwen_edit`) (NEW!) | Edit one image or combine two images using Qwen Image 2.1. Supports cfg, steps, sampler, scheduler. Output resolution follows the input image(s). |
+| :pencil2: Flux Edit (`/flux_edit`) | Edit one image or combine two images using Flux 2 Klein 4B. Supports cfg, steps, sampler, megapixels. |
 | :mag: Upscale (`/upscale`) | Upscale an attached image using SDXL, SeedVR2, or FlashVSR. SDXL shows a picker to use any checkpoint in `models/checkpoints`. Supports custom scale factor, prompt, negative, and strength. |
 | :speech_balloon: Prompt Generation (`/gen_prompt`) | Converts a natural-language idea into a structured Ideogram 4 JSON caption using an LLM (OpenAI-compatible endpoint). Includes reasoning-effort selection. |
 | :clipboard: LLM Model List (`/llm_models`) | Lists all models available on the configured LLM endpoint. |
