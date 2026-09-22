@@ -68,8 +68,9 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
                 base_lines.append("**Resolution:** " + ", ".join(res_parts))
             base_lines.append(f"**Output:** {image_resolution(images[0])}")
         elif model == "qwen_image":
-            if gen_kwargs.get("enhance"):
-                base_lines.append("**Prompt enhanced:** yes")
+            # Workflow defaults: translation on, enhance on (node 473 = true).
+            base_lines.append("**Translation:** " + ("off" if gen_kwargs.get("translate") is False else "on"))
+            base_lines.append("**Prompt enhanced:** " + ("off" if gen_kwargs.get("enhance") is False else "on"))
             res_parts = []
             megapixels = gen_kwargs.get("megapixels")
             if megapixels:
@@ -428,8 +429,9 @@ class GenerationCog(commands.Cog):
     @app_commands.choices(sampler=SAMPLER_CHOICES)
     @app_commands.choices(scheduler=SCHEDULER_CHOICES)
     @app_commands.choices(aspect_ratio=ASPECT_RATIO_CHOICES)
-    @app_commands.describe(prompt="Text prompt (auto-translated to English)")
+    @app_commands.describe(prompt="Text prompt")
     @app_commands.describe(negative="Negative prompt")
+    @app_commands.describe(translate="Translate the prompt to English with Google Translate")
     @app_commands.describe(enhance="Rewrite the prompt with the Qwen 8B enhancer before generating")
     @app_commands.describe(steps="Sampling steps")
     @app_commands.describe(megapixels="Target resolution in megapixels")
@@ -442,6 +444,7 @@ class GenerationCog(commands.Cog):
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
     async def qwen_image(self, interaction: discord.Interaction, prompt: str,
                          negative: str | None = None,
+                         translate: bool | None = None,
                          enhance: bool | None = None,
                          steps: Optional[app_commands.Range[int, 1, 150]] = None,
                          megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
@@ -490,6 +493,7 @@ class GenerationCog(commands.Cog):
         gen_kwargs = {
             "prompt": prompt,
             "negative": negative,
+            "translate": translate,
             "enhance": enhance,
             "seed": seed,
             "steps": steps,

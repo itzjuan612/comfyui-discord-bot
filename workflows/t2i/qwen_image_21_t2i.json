@@ -3,7 +3,7 @@
     "inputs": {
       "aspect_ratio": "1:1 (Square)",
       "megapixels": 2,
-      "multiple": 8
+      "multiple": 32
     },
     "class_type": "ResolutionSelector",
     "_meta": {
@@ -30,7 +30,7 @@
     "inputs": {
       "from_translate": "auto",
       "to_translate": "en",
-      "manual_translate": true,
+      "manual_translate": false,
       "Manual Trasnlate": "Manual Trasnlate",
       "text": ""
     },
@@ -106,7 +106,7 @@
   },
   "473": {
     "inputs": {
-      "value": false
+      "value": true
     },
     "class_type": "PrimitiveBoolean",
     "_meta": {
@@ -145,23 +145,13 @@
       "title": "Final Prompt sent to Qwen 2.1"
     }
   },
-  "459:451": {
-    "inputs": {
-      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
-      "weight_dtype": "default"
-    },
-    "class_type": "UNETLoader",
-    "_meta": {
-      "title": "Cargar Modelo de Difusión"
-    }
-  },
   "459:452": {
     "inputs": {
       "prompt": [
         "474",
         0
       ],
-      "negative_prompt": "blurry, ugly, deformed, mutation",
+      "negative_prompt": "Watermark, Text, censored, deformed, bad anatomy, disfigured, poorly drawn face, mutated, extra limb, ugly, poorly drawn hands, missing limb, floating limbs, disconnected limbs, disconnected head, malformed hands, long neck, mutated hands and fingers, bad hands, missing fingers, cropped, worst quality, low quality, mutation, poorly drawn, huge calf, bad hands, fused hand, missing hand, disappearing arms, disappearing thigh, disappearing calf, disappearing legs, missing fingers, fused fingers, abnormal eye proportion, Abnormal hands, abnormal legs, abnormal feet,  abnormal fingers",
       "resolution": 1024,
       "clip": [
         "459:453",
@@ -209,16 +199,56 @@
       "title": "Decodificación VAE"
     }
   },
+  "459:456": {
+    "inputs": {
+      "width": [
+        "13",
+        0
+      ],
+      "height": [
+        "13",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Imagen Latente Vacía"
+    }
+  },
+  "459:485": {
+    "inputs": {
+      "attention": "comfy kitchen attention",
+      "model": [
+        "459:451",
+        0
+      ]
+    },
+    "class_type": "ModelAttentionBackend",
+    "_meta": {
+      "title": "ModelAttentionBackend"
+    }
+  },
+  "459:451": {
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Cargar Modelo de Difusión"
+    }
+  },
   "459:458": {
     "inputs": {
-      "seed": 644109402182626,
-      "steps": 15,
+      "seed": 0,
+      "steps": 45,
       "cfg": 1,
       "sampler_name": "euler",
       "scheduler": "simple",
       "denoise": 1,
       "model": [
-        "459:484",
+        "459:491",
         0
       ],
       "positive": [
@@ -239,37 +269,48 @@
       "title": "KSampler"
     }
   },
-  "459:484": {
+  "459:487": {
     "inputs": {
-      "reuse_threshold": 0.2,
-      "start_percent": 0.2,
-      "end_percent": 0.7,
-      "verbose": false,
-      "model": [
-        "459:485",
-        0
-      ]
-    },
-    "class_type": "EasyCache",
-    "_meta": {
-      "title": "EasyCache"
-    }
-  },
-  "459:485": {
-    "inputs": {
-      "attention": "comfy kitchen attention",
+      "sage_attention": "auto",
+      "allow_compile": true,
       "model": [
         "459:451",
         0
       ]
     },
-    "class_type": "ModelAttentionBackend",
+    "class_type": "PathchSageAttentionKJ",
     "_meta": {
-      "title": "ModelAttentionBackend"
+      "title": "Patch Sage Attention KJ"
     }
   },
-  "459:456": {
+  "459:488": {
     "inputs": {
+      "warmup_steps": 5,
+      "tail_actual_steps": 4,
+      "window_size": 2,
+      "flex_window": 0.4,
+      "max_consecutive_forecasts": 8,
+      "history_points": 8,
+      "chebyshev_degree": 4,
+      "ridge_lambda": 0.1,
+      "blend_weight": 1,
+      "cache_device": "main_device",
+      "force_actual_on_control": true,
+      "debug": false,
+      "model": [
+        "459:487",
+        0
+      ]
+    },
+    "class_type": "SpectrumQwenImage21",
+    "_meta": {
+      "title": "Spectrum (Qwen-Image-2.1)"
+    }
+  },
+  "459:491": {
+    "inputs": {
+      "max_shift": 0.9,
+      "base_shift": 0.5,
       "width": [
         "13",
         0
@@ -278,11 +319,14 @@
         "13",
         1
       ],
-      "batch_size": 1
+      "model": [
+        "459:488",
+        0
+      ]
     },
-    "class_type": "EmptyLatentImage",
+    "class_type": "ModelSamplingFlux",
     "_meta": {
-      "title": "Imagen Latente Vacía"
+      "title": "MuestreoDeModeloFlux"
     }
   }
 }
