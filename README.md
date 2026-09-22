@@ -8,7 +8,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 
 | Feature | Description |
 | --- | --- |
-| :art: Qwen Image 2.1 (`/qwen_image`) (NEW!) | Generate images with Qwen Image 2.1. The prompt is auto-translated to English, optionally rewritten first by a Qwen 8B prompt enhancer. Supports prompt, negative prompt, enhance, steps, megapixels, aspect ratio, sampler, scheduler, CFG, seed, and batch size. |
+| :art: Qwen Image 2.1 (`/qwen_image`) (NEW!) | Generate images with Qwen Image 2.1. Optional Google Translate of the prompt to English, optional rewrite by a Qwen 8B prompt enhancer. Supports prompt, negative prompt, translate, enhance, steps, megapixels, aspect ratio, sampler, scheduler, CFG, seed, and batch size. |
 | :art: Ideogram (`/ideogram`) | Generate professional images with Ideogram 4 by using JSON to carefully sketch your image. Supports seed, quality preset, megapixels, and aspect ratio. |
 | :art: Stable Diffusion XL (`/sdxl`) | Generate images with versatile SDXL models. Supports prompt, negative prompt, seed, steps, width/height, and CFG. Can use any checkpoint in ComfyUI's `models/checkpoints` folder via the `model` parameter, plus up to two LoRAs (`lora1`, `lora2`) with a unified `lora_strength`. Automatically uses separate CLIP/VAE loaders for checkpoints that lack a bundled text encoder/VAE (split checkpoints). |
 | :art: Z-Image Turbo & Base (`/zimage`) | Generate high quality images with very fast and light Z-Image models. Supports natural language prompts, up to two LoRAs, multiple Z-Image models, and also batch images. Other params are steps, width/height, and CFG. |
@@ -73,7 +73,8 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | --- | --- |
 | `prompt` | Text prompt (required) |
 | `negative` | Negative prompt |
-| `enhance` | Rewrite the prompt with the Qwen 8B prompt enhancer before generating (optional, off by default) |
+| `translate` | Translate the prompt to English with Google Translate (optional, on by default) |
+| `enhance` | Rewrite the prompt with the Qwen 8B prompt enhancer before generating (optional, on by default) |
 | `steps` | Sampling steps |
 | `megapixels` | Target resolution in MP |
 | `aspect_ratio` | Aspect ratio preset |
@@ -83,7 +84,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | `batch_size` | Number of images to generate at once |
 | `stealth` | Ephemeral output |
 
-> **Translation & enhancement:** The positive prompt passes through a Google Translate node (auto-detect → English) before encoding, so non-English prompts work directly — note that the prompt text is sent to Google Translate as part of generation. With `enhance: true`, the translated prompt is first rewritten by a Qwen 8B prompt enhancer (a system prompt steers it to preserve your intent, wording for visible text, and style) and the result is what the image model receives. The embed reports when enhancement was used.
+> **Translation & enhancement:** Unless you opt out, the positive prompt passes through a Google Translate node (auto-detect → English) before encoding, so non-English prompts work directly — note that the prompt text is sent to Google Translate when translation is on. `translate: false` skips translation and sends your prompt as-is. With `enhance: true` (the default), the prompt is first rewritten by a Qwen 8B prompt enhancer (a system prompt steers it to preserve your intent, wording for visible text, and style) and the result is what the image model receives; `enhance: false` sends the (optionally translated) prompt straight to the encoder. The embed reports both states.
 
 ### `/flux_edit`
 

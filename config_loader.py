@@ -208,9 +208,14 @@ models:
       # that switch, so the prompt must be written here instead of prompt_node.
       prompt_input_node: "468"
       prompt_input_key: text
+      # GoogleTranslateTextNode: manual_translate is inverted (True = pass the
+      # prompt through untranslated, False = translate to English). The bot's
+      # translate kwarg writes the opposite of its own value to this input.
+      translate_node: "468"
+      translate_key: manual_translate
       # PrimitiveBoolean "Enhance prompt?": True reroutes the prompt through the
       # Qwen 8B prompt enhancer before encoding. When the enhance kwarg is None
-      # this node is left untouched (workflow default: false).
+      # this node is left untouched (workflow default: true).
       enhance_node: "473"
       enhance_key: value
       prompt_node: "459:452"

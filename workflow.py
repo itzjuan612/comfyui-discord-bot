@@ -124,6 +124,14 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     enhance = kwargs.get("enhance")
     if enhance is not None:
         set_node(spec.get("enhance_node"), spec.get("enhance_key", "value"), bool(enhance))
+    # Qwen Image 2.1 T2I: optional prompt translation. The GoogleTranslateTextNode
+    # input is inverted (manual_translate: True = pass through untranslated,
+    # False = translate to English), so the node receives the opposite value.
+    # None leaves the workflow default (translate) untouched.
+    translate = kwargs.get("translate")
+    if translate is not None:
+        set_node(spec.get("translate_node"), spec.get("translate_key", "manual_translate"),
+                 not bool(translate))
     if negative is not None:
         set_node(spec.get("negative_node"), spec.get("negative_key", "text"), negative)
     if seed is not None:
