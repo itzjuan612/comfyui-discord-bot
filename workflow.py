@@ -133,7 +133,7 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         input_node = spec.get("prompt_input_node")
         if input_node is not None:
             # Prompt enters through an intermediate node (e.g. Qwen's Google
-            # Translate node feeding the always-on prompt enhancer); the
+            # Translate node feeding the optional prompt enhancer); the
             # encode node's prompt input is a link into that chain, so
             # writing to prompt_node would clobber the link and bypass it.
             set_node(input_node, spec.get("prompt_input_key", "text"), prompt)
@@ -147,6 +147,22 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     if translate is not None:
         set_node(spec.get("translate_node"), spec.get("translate_key", "manual_translate"),
                  not bool(translate))
+    # Qwen Image 2.1 T2I: optional prompt enhancement chain between the
+    # translate node and the encoder (StringConcatenate -> TextGenerate ->
+    # showAnything). enhance=False removes those nodes and rewires the
+    # encoder's prompt input directly to the translate node; None/True
+    # leaves the workflow's saved chain (enabled) untouched.
+    enhance = kwargs.get("enhance")
+    if enhance is not None and not bool(enhance):
+        for node_id in spec.get("enhance_nodes") or []:
+            workflow.pop(str(node_id), None)
+        prompt_node = spec.get("prompt_node")
+        input_node = spec.get("prompt_input_node")
+        if prompt_node is not None and input_node is not None:
+            workflow[str(prompt_node)]["inputs"][spec.get("prompt_key", "prompt")] = [
+                str(input_node),
+                0,
+            ]
     if negative is not None:
         set_node(spec.get("negative_node"), spec.get("negative_key", "text"), negative)
     if seed is not None:

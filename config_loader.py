@@ -204,14 +204,15 @@ models:
       # the node is removed and the model chain rewired around it. The bot
       # also falls back to disabled when the file is not installed in
       # ComfyUI's models/loras folder. Prompt enhancement (Qwen 8B
-      # TextGenerate) is always on in the workflow itself.
+      # TextGenerate) is on by default; the enhance param can disable it
+      # (see enhance_nodes below).
       lora: "qwen-image-2.1-fix-1.0-comfy.safetensors"
       lora1_node: "733"
       # Model chain around the LoRA loader (UNETLoader -> LoRA -> APG).
       model_chain_start: "126"
       model_chain_end: "734"
       # The positive prompt enters through the GoogleTranslateTextNode
-      # (auto -> en) feeding the always-on prompt enhancer; the encode
+      # (auto -> en) feeding the optional prompt enhancer; the encode
       # node's prompt input is a link into that chain, so the prompt must
       # be written here instead of prompt_node.
       prompt_input_node: "773"
@@ -221,6 +222,11 @@ models:
       # translate kwarg writes the opposite of its own value to this input.
       translate_node: "773"
       translate_key: manual_translate
+      # Optional Qwen 8B prompt enhancement chain between the translate node
+      # and the encoder (StringConcatenate -> TextGenerate -> showAnything).
+      # enhance: false removes these nodes and rewires the encoder's prompt
+      # input straight to the translate node; None leaves the chain (on).
+      enhance_nodes: [754, 753, 774]
       prompt_node: "725"
       prompt_key: prompt
       negative_node: "725"
