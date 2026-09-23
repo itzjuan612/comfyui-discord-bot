@@ -268,6 +268,12 @@ models:
       image_key: "images.image_1"
       image2_node: "776"
       image2_key: "images.image_2"
+      # TextEncodeQwenImage21 resolution budget (output area ~= R^2 px): the
+      # bot sets R from the input image so the output follows the input size
+      # on the node's 32-px grid. max_resolution optionally caps R (VRAM
+      # guard); max output area ~= max_resolution^2.
+      encode_resolution_node: "725"
+      max_resolution: 2048
 """
 
 

@@ -342,6 +342,15 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
                 value = int(factor) if factor.is_integer() else factor
                 workflow[scale_id_str]["inputs"][spec.get("scale_key", "scale_by")] = value
 
+    # Qwen Image 2.1 I2I: encode-node resolution budget (output area ~= R^2
+    # pixels). The bot computes R from the input image so the output follows
+    # the input size on the node's 32-px grid; without the kwarg the
+    # workflow's fixed default (1376 ~= 1.89 MP) is kept.
+    encode_resolution = kwargs.get("resolution")
+    encode_node = spec.get("encode_resolution_node")
+    if encode_resolution is not None and encode_node is not None:
+        workflow[str(encode_node)]["inputs"]["resolution"] = int(encode_resolution)
+
 
 # Runtime GPU-safety bounds. Command decorators use app_commands.Range for
 # immediate user-facing errors, but values coming from /settings, persisted
@@ -354,6 +363,7 @@ _KW_BOUNDS = {
     "batch_size": (1, 8),
     "megapixels": (1, 8),
     "scale": (1.0, 4.0),
+    "resolution": (32, 4096),
 }
 
 

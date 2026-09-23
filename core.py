@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import logging
+import math
 import os
 import random
 import subprocess
@@ -538,6 +539,24 @@ def image_resolution(data: bytes) -> str:
     """Return the "WxH" resolution string for an image's bytes."""
     img = Image.open(io.BytesIO(data))
     return f"{img.size[0]}x{img.size[1]}"
+
+
+def encode_resolution(data: bytes, cap: int | None = None) -> int:
+    """TextEncodeQwenImage21's ``resolution`` budget for an input image.
+
+    The node resizes references to about R^2 total pixels at the input's
+    aspect ratio, each axis rounded to a multiple of 32. Choosing
+    R = round(sqrt(w*h) / 32) * 32 therefore reproduces the input size on
+    the node's 32-px grid. ``cap`` optionally limits R (VRAM guard, any
+    value; rounded down to a multiple of 32); the node itself accepts at
+    most 4096.
+    """
+    img = Image.open(io.BytesIO(data))
+    w, h = img.size
+    r = int(round(math.sqrt(w * h) / 32.0) * 32)
+    if cap:
+        r = min(r, (int(cap) // 32) * 32)
+    return max(32, min(r, 4096))
 
 
 def meta_lines(meta: dict) -> list[str]:
