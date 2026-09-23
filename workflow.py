@@ -459,6 +459,12 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
         meta["sampler"] = api_workflow[str(spec["sampler_node"])]["inputs"].get("sampler_name")
         meta["scheduler"] = api_workflow[str(spec["sampler_node"])]["inputs"].get("scheduler")
 
+    # Identify the sampler so live progress ignores other nodes' counters
+    # (the TextGenerate prompt enhancer reports one unit per generated token
+    # and would otherwise race the bar ahead of actual image sampling).
+    progress_node_id = str(spec["steps_node"]) if spec.get("steps_node") is not None else None
+    progress_total = meta.get("steps") if progress_node_id is not None else None
+
     # If this checkpoint was previously seen without a bundled text
     # encoder/VAE, use the separate loaders straight away (no error/retry).
     switch_node = spec.get("switch_node")
@@ -468,7 +474,10 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
 
     prompt_id, client_id = await comfy.queue_prompt(api_workflow)
     try:
-        filenames = await comfy.wait_for_result(prompt_id, client_id, on_progress=on_progress)
+        filenames = await comfy.wait_for_result(
+            prompt_id, client_id, on_progress=on_progress,
+            progress_node_id=progress_node_id, progress_total=progress_total,
+        )
     except ComfyUIError as exc:
         # If the checkpoint has no bundled text encoder/VAE, the run fails
         # (ComfyUI reports a generic "error"). Flip the switch node so the
@@ -478,7 +487,10 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
             user_settings.mark_split_checkpoint(effective_ckpt)
             api_workflow[str(switch_node)]["inputs"]["value"] = True
             prompt_id, client_id = await comfy.queue_prompt(api_workflow)
-            filenames = await comfy.wait_for_result(prompt_id, client_id, on_progress=on_progress)
+            filenames = await comfy.wait_for_result(
+                prompt_id, client_id, on_progress=on_progress,
+                progress_node_id=progress_node_id, progress_total=progress_total,
+            )
         else:
             raise
     images = []
