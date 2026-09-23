@@ -68,9 +68,8 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
                 base_lines.append("**Resolution:** " + ", ".join(res_parts))
             base_lines.append(f"**Output:** {image_resolution(images[0])}")
         elif model == "qwen_image":
-            # Workflow defaults: translation on; enhancement off unless
-            # explicitly enabled.
-            base_lines.append("**Translation:** " + ("off" if gen_kwargs.get("translate") is False else "on"))
+            # Both toggles are off unless explicitly enabled.
+            base_lines.append("**Translation:** " + ("on" if gen_kwargs.get("translate") is True else "off"))
             base_lines.append("**Prompt enhanced:** " + ("on" if gen_kwargs.get("enhance") is True else "off"))
             res_parts = []
             megapixels = gen_kwargs.get("megapixels")
@@ -433,7 +432,7 @@ class GenerationCog(commands.Cog):
     @app_commands.autocomplete(lora=_sdxl_lora_autocomplete)
     @app_commands.describe(prompt="Text prompt")
     @app_commands.describe(negative="Negative prompt")
-    @app_commands.describe(translate="Translate the prompt to English with Google Translate")
+    @app_commands.describe(translate="Translate the prompt to English with Google Translate (off by default)")
     @app_commands.describe(steps="Sampling steps")
     @app_commands.describe(megapixels="Target resolution in megapixels")
     @app_commands.describe(aspect_ratio="Aspect ratio preset")

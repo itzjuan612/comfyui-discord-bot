@@ -211,8 +211,9 @@ models:
       prompt_input_node: "773"
       prompt_input_key: text
       # GoogleTranslateTextNode: manual_translate is inverted (True = pass the
-      # prompt through untranslated, False = translate to English). The bot's
-      # translate kwarg writes the opposite of its own value to this input.
+      # prompt through untranslated, False = translate to English). Off by
+      # default: the bot always writes True (pass through) unless the
+      # translate kwarg is explicitly true.
       translate_node: "773"
       translate_key: manual_translate
       # Optional Qwen 8B prompt enhancement chain between the translate node

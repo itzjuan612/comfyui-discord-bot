@@ -141,12 +141,12 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
             set_node(spec.get("prompt_node"), spec.get("prompt_key", "text"), prompt)
     # Qwen Image 2.1 T2I: optional prompt translation. The GoogleTranslateTextNode
     # input is inverted (manual_translate: True = pass through untranslated,
-    # False = translate to English), so the node receives the opposite value.
-    # None leaves the workflow default (translate) untouched.
-    translate = kwargs.get("translate")
-    if translate is not None:
-        set_node(spec.get("translate_node"), spec.get("translate_key", "manual_translate"),
-                 not bool(translate))
+    # False = translate to English). Translation is off unless explicitly
+    # enabled: only translate=True translates; None/False pass the prompt
+    # through untranslated. The raw workflow ships manual_translate: false
+    # (translate on), so the input is always rewritten when the node exists.
+    set_node(spec.get("translate_node"), spec.get("translate_key", "manual_translate"),
+             not bool(kwargs.get("translate")))
     # Qwen Image 2.1 T2I: optional prompt enhancement chain between the
     # translate node and the encoder (StringConcatenate -> TextGenerate ->
     # showAnything). Enhancement is off unless explicitly enabled: only
