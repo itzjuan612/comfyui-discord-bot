@@ -149,11 +149,11 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
                  not bool(translate))
     # Qwen Image 2.1 T2I: optional prompt enhancement chain between the
     # translate node and the encoder (StringConcatenate -> TextGenerate ->
-    # showAnything). enhance=False removes those nodes and rewires the
-    # encoder's prompt input directly to the translate node; None/True
-    # leaves the workflow's saved chain (enabled) untouched.
+    # showAnything). Enhancement is off unless explicitly enabled: only
+    # enhance=True keeps the chain; None/False remove those nodes and
+    # rewire the encoder's prompt input directly to the translate node.
     enhance = kwargs.get("enhance")
-    if enhance is not None and not bool(enhance):
+    if not bool(enhance):
         for node_id in spec.get("enhance_nodes") or []:
             workflow.pop(str(node_id), None)
         prompt_node = spec.get("prompt_node")

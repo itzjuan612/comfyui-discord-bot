@@ -68,9 +68,10 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
                 base_lines.append("**Resolution:** " + ", ".join(res_parts))
             base_lines.append(f"**Output:** {image_resolution(images[0])}")
         elif model == "qwen_image":
-            # Workflow defaults: translation on, enhancement on.
+            # Workflow defaults: translation on; enhancement off unless
+            # explicitly enabled.
             base_lines.append("**Translation:** " + ("off" if gen_kwargs.get("translate") is False else "on"))
-            base_lines.append("**Prompt enhanced:** " + ("off" if gen_kwargs.get("enhance") is False else "on"))
+            base_lines.append("**Prompt enhanced:** " + ("on" if gen_kwargs.get("enhance") is True else "off"))
             res_parts = []
             megapixels = gen_kwargs.get("megapixels")
             if megapixels:
@@ -443,7 +444,7 @@ class GenerationCog(commands.Cog):
     @app_commands.describe(lora_strength="LoRA strength (optional, default 1.0)")
     @app_commands.describe(seed="Seed (optional)")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
-    @app_commands.describe(enhance="Rewrite the prompt with the Qwen 8B enhancer before generating")
+    @app_commands.describe(enhance="Rewrite the prompt with the Qwen 8B enhancer (off by default)")
     async def qwen_image(self, interaction: discord.Interaction, prompt: str,
                          negative: str | None = None,
                          translate: bool | None = None,

@@ -213,7 +213,7 @@
   },
   "754": {
     "inputs": {
-      "string_a": "Expand the following text into a detailed 3-paragraph image generation prompt, without preamble.",
+      "string_a": "You are an expert prompt engineer specializing in Qwen Image. Your task is to expand the user's short, raw concept into a highly detailed, descriptive, and visually rich prompt optimized for image generation. \n\nFollow these strict structural rules:\n1. FORMAT: Write in continuous, flowing natural prose (paragraphs). Avoid comma-separated tag lists or \"tag soup\".\n2. LENGTH: Aim for a comprehensive description of approximately 150 to 200 words. Do not let the output get truncated.\n3. STRUCTURE: Naturally blend the following details into the description:\n   - Subject: Clear, central focus of the image.\n   - Environment & Background: Detailed setting, atmospheric conditions, weather, time of day.\n   - Lighting & Mood: Soft, dramatic, cinematic, volumetric, or specific colored lighting to establish emotion.\n   - Composition & Camera: Perspective, shot type (e.g., close-up, wide-angle), camera positioning, and depth of field.\n4. TEXT RENDERING: If the user requests literal text/glyphs to appear in the image, you must put the exact text inside double quotes (e.g., \"Welcome\"). Provide specific text positioning, font, color, and medium.\n5. PROHIBITIONS: Never include negations (e.g., \"no cars\", \"without clouds\") in this positive prompt. Only describe what SHOULD be visible. \n\nOutput ONLY the final expanded prompt. Do not include introductory or concluding conversational filler. ",
       "string_b": [
         "773",
         0

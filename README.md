@@ -74,7 +74,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | `prompt` | Text prompt (required) |
 | `negative` | Negative prompt |
 | `translate` | Translate the prompt to English with Google Translate (optional, on by default) |
-| `enhance` | Rewrite the prompt with the Qwen 8B enhancer (optional, on by default) |
+| `enhance` | Rewrite the prompt with the Qwen 8B enhancer (optional, off by default — toggle on to enable) |
 | `steps` | Sampling steps |
 | `megapixels` | Target resolution in MP |
 | `aspect_ratio` | Aspect ratio preset |
@@ -85,7 +85,7 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | `seed` | Seed (optional) |
 | `stealth` | Ephemeral output |
 
-> **Translation & enhancement:** Unless you opt out, the positive prompt passes through a Google Translate node (auto-detect → English) before encoding, so non-English prompts work directly — note that the prompt text is sent to Google Translate when translation is on. `translate: false` skips translation and sends your prompt as-is. Prompt enhancement by the Qwen 8B model is on by default (it rewrites the prompt to preserve your intent, wording for visible text, and style); pass `enhance: false` to skip it — the enhancer nodes are removed and the (optionally translated) prompt goes straight to the encoder. The embed reports both toggles.
+> **Translation & enhancement:** Unless you opt out, the positive prompt passes through a Google Translate node (auto-detect → English) before encoding, so non-English prompts work directly — note that the prompt text is sent to Google Translate when translation is on. `translate: false` skips translation and sends your prompt as-is. Prompt enhancement by the Qwen 8B model is off by default — pass `enhance: true` to rewrite the prompt (it preserves your intent, wording for visible text, and style); otherwise the enhancer nodes are removed and the (optionally translated) prompt goes straight to the encoder. The embed reports both toggles.
 
 > **Qwen LoRA:** Both Qwen workflows load a LoRA from ComfyUI's `models/loras` folder. When the `lora` parameter is omitted, the default from the config's `lora` key (under `models.qwen_image.t2i` / `.i2i`) is used. Pass `none` (or `off`) to disable the loader for a single run. If the resolved file is not installed in the folder, the bot automatically disables the loader and generates without it (a warning is logged).
 
