@@ -89,6 +89,8 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 
 > **Qwen LoRA:** Both Qwen workflows load a LoRA from ComfyUI's `models/loras` folder. When the `lora` parameter is omitted, the default from the config's `lora` key (under `models.qwen_image.t2i` / `.i2i`) is used. Pass `none` (or `off`) to disable the loader for a single run. If the resolved file is not installed in the folder, the bot automatically disables the loader and generates without it (a warning is logged).
 
+> **Spectrum:** The T2I model path runs through [Spectrum (Qwen-Image-2.1)](https://github.com/awdqwdasdg/Comfyui-Spectrum-Qwen2.1) — placed after the attention backend and before the KSampler — for faster sampling. It is tuned for quality over speed (`flex_window: 0.4`, `tail_actual_steps: 4`, `blend_weight: 1.0`); outputs can look slightly softer than full sampling.
+
 ### `/flux_edit`
 
 | Parameter | Description |

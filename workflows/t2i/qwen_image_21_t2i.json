@@ -137,7 +137,7 @@
       "scheduler": "simple",
       "denoise": 1,
       "model": [
-        "769",
+        "780",
         0
       ],
       "positive": [
@@ -272,6 +272,30 @@
     "class_type": "easy showAnything",
     "_meta": {
       "title": "easy showAnything"
+    }
+  },
+  "780": {
+    "inputs": {
+      "warmup_steps": 5,
+      "tail_actual_steps": 4,
+      "window_size": 2,
+      "flex_window": 0.4,
+      "max_consecutive_forecasts": 8,
+      "history_points": 8,
+      "chebyshev_degree": 4,
+      "ridge_lambda": 0.1,
+      "blend_weight": 1,
+      "cache_device": "main_device",
+      "force_actual_on_control": true,
+      "debug": false,
+      "model": [
+        "769",
+        0
+      ]
+    },
+    "class_type": "SpectrumQwenImage21",
+    "_meta": {
+      "title": "Spectrum (Qwen-Image-2.1)"
     }
   }
 }
