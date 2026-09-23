@@ -11,6 +11,85 @@ from http_session import get_session
 log = logging.getLogger("comfyui_client")
 
 
+def _extract_progress(
+    payload: dict,
+    progress_node_id: str | None = None,
+    progress_total: float | None = None,
+) -> float | None:
+    """Return the sampler's 0..1 progress from a ComfyUI progress payload.
+
+    Only the sampler node drives the bar. Other nodes emit progress too —
+    notably TextGenerate, which reports one unit per generated token for the
+    prompt enhancer — and must be ignored, otherwise the bar races to a high
+    percentage before image sampling even begins.
+
+    ``progress_node_id`` is the sampler's node id (spec ``steps_node``) and
+    ``progress_total`` its step count, used as a fallback when a payload
+    reports a different (subgraph-expanded) node id.
+
+    Returns None when the payload carries no usable sampler progress; the
+    caller should then hold the bar steady.
+    """
+    nodes = payload.get("nodes")
+    if isinstance(nodes, dict):
+        if progress_node_id is not None:
+            node_data = nodes.get(progress_node_id)
+            if not (isinstance(node_data, dict) and node_data.get("state") == "running"):
+                # Subgraph expansion can rename execution ids; fall back to
+                # the running node whose max equals the sampler's step count.
+                node_data = None
+                if progress_total is not None:
+                    for other in nodes.values():
+                        if (
+                            isinstance(other, dict)
+                            and other.get("state") == "running"
+                            and float(other.get("max", 0) or 0) == float(progress_total)
+                        ):
+                            node_data = other
+                            break
+                if node_data is None:
+                    return None
+            maximum = float(node_data["max"]) if node_data.get("max") is not None else 1.0
+            value = float(node_data["value"]) if node_data.get("value") is not None else 0.0
+            if maximum <= 0:
+                return None
+            return value / maximum
+        # Sampler id unknown: pick the running node with the largest max
+        # (the sampling node that drives generation time).
+        best = None
+        for node_data in nodes.values():
+            if not isinstance(node_data, dict) or node_data.get("state") != "running":
+                continue
+            if best is None or node_data.get("max", 0) > best.get("max", 0):
+                best = node_data
+        if best is None:
+            return None
+        maximum = float(best["max"]) if best.get("max") is not None else 1.0
+        value = float(best["value"]) if best.get("value") is not None else 0.0
+        if maximum <= 0:
+            return None
+        return value / maximum
+    if "value" in payload:
+        if payload["value"] is None:
+            return None
+        value = float(payload["value"])
+        maximum = float(payload["max"]) if payload.get("max") is not None else 100.0
+        if maximum <= 0:
+            return None
+        if progress_node_id is not None:
+            node_at = payload.get("node")
+            if node_at is not None and str(node_at) != progress_node_id:
+                # Not the sampler (e.g. TextGenerate tokens). Allow when the
+                # max still matches the sampler's step count: subgraph
+                # expansion may report a different id for the same node.
+                if progress_total is None or maximum != float(progress_total):
+                    return None
+            elif node_at is None and progress_total is not None and maximum != float(progress_total):
+                return None
+        return value / maximum
+    return None
+
+
 class ComfyUIError(Exception):
     pass
 
@@ -52,12 +131,16 @@ class ComfyUIClient:
         client_id: str,
         timeout: float = 300.0,
         on_progress=None,
+        progress_node_id: str | None = None,
+        progress_total: float | None = None,
     ) -> list[str]:
         """Poll /history until the prompt finishes; returns output filenames.
 
         If ``on_progress`` is given, a WebSocket connection is opened and
         ComfyUI's live progress values (0.0 - 1.0) are forwarded to it while
-        the prompt executes.
+        the prompt executes. ``progress_node_id``/``progress_total`` identify
+        the sampler node so progress reported by other nodes (e.g. the
+        TextGenerate prompt enhancer's token counter) is ignored.
         """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
@@ -109,27 +192,9 @@ class ComfyUIClient:
                     await asyncio.sleep(0.5)
 
         def _handle_progress(payload, on_progress):
-            """Extract progress from a ComfyUI websocket payload and forward it."""
-            nodes = payload.get("nodes")
-            if isinstance(nodes, dict):
-                # progress_state carries per-node progress. Pick the running
-                # node with the largest max (the sampling node that drives
-                # generation time).
-                best = None
-                for node_data in nodes.values():
-                    if not isinstance(node_data, dict) or node_data.get("state") != "running":
-                        continue
-                    if best is None or node_data.get("max", 0) > best.get("max", 0):
-                        best = node_data
-                if best is not None:
-                    maximum = float(best.get("max", 1) or 1)
-                    value = float(best.get("value", 0))
-                    on_progress(value / maximum)
-            elif "value" in payload:
-                # Legacy flat format fallback.
-                value = float(payload["value"])
-                maximum = float(payload.get("max", 100) or 100)
-                on_progress(value / maximum)
+            fraction = _extract_progress(payload, progress_node_id, progress_total)
+            if fraction is not None:
+                on_progress(fraction)
 
         async def poll_history() -> list[str]:
             nonlocal seen

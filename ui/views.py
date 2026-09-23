@@ -14,7 +14,7 @@ from bot import bot
 from core import (
     config, comfy, log, generation_store, user_settings, moderation,
     BOT_OWNER_ID, SAMPLER_NAMES, SCHEDULER_NAMES, UPSCALE_MODELS, UPSCALE_MODEL_LABELS,
-    image_resolution, uuid_hex,
+    image_resolution, encode_resolution, uuid_hex,
     reply_error, ban_guard, check_cooldown, can_manage, is_owner, download_image,
     nsfw_blocked, deliver_generation,
     schedule_message_deletion, schedule_original_response_deletion,
@@ -725,6 +725,9 @@ class QwenEditModal(Modal):
             "image_filename": uploaded1,
             # Single-image button flow: the second-image node is omitted.
             "image2_filename": None,
+            # Encode-node resolution budget from the input image area, so
+            # the output follows the input size (32-px grid), capped by config.
+            "resolution": encode_resolution(data1, spec.get("max_resolution")),
         }
 
         try:

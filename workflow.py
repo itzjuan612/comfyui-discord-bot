@@ -342,6 +342,15 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
                 value = int(factor) if factor.is_integer() else factor
                 workflow[scale_id_str]["inputs"][spec.get("scale_key", "scale_by")] = value
 
+    # Qwen Image 2.1 I2I: encode-node resolution budget (output area ~= R^2
+    # pixels). The bot computes R from the input image so the output follows
+    # the input size on the node's 32-px grid; without the kwarg the
+    # workflow's fixed default (1376 ~= 1.89 MP) is kept.
+    encode_resolution = kwargs.get("resolution")
+    encode_node = spec.get("encode_resolution_node")
+    if encode_resolution is not None and encode_node is not None:
+        workflow[str(encode_node)]["inputs"]["resolution"] = int(encode_resolution)
+
 
 # Runtime GPU-safety bounds. Command decorators use app_commands.Range for
 # immediate user-facing errors, but values coming from /settings, persisted
@@ -354,6 +363,7 @@ _KW_BOUNDS = {
     "batch_size": (1, 8),
     "megapixels": (1, 8),
     "scale": (1.0, 4.0),
+    "resolution": (32, 4096),
 }
 
 
@@ -459,6 +469,12 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
         meta["sampler"] = api_workflow[str(spec["sampler_node"])]["inputs"].get("sampler_name")
         meta["scheduler"] = api_workflow[str(spec["sampler_node"])]["inputs"].get("scheduler")
 
+    # Identify the sampler so live progress ignores other nodes' counters
+    # (the TextGenerate prompt enhancer reports one unit per generated token
+    # and would otherwise race the bar ahead of actual image sampling).
+    progress_node_id = str(spec["steps_node"]) if spec.get("steps_node") is not None else None
+    progress_total = meta.get("steps") if progress_node_id is not None else None
+
     # If this checkpoint was previously seen without a bundled text
     # encoder/VAE, use the separate loaders straight away (no error/retry).
     switch_node = spec.get("switch_node")
@@ -468,7 +484,10 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
 
     prompt_id, client_id = await comfy.queue_prompt(api_workflow)
     try:
-        filenames = await comfy.wait_for_result(prompt_id, client_id, on_progress=on_progress)
+        filenames = await comfy.wait_for_result(
+            prompt_id, client_id, on_progress=on_progress,
+            progress_node_id=progress_node_id, progress_total=progress_total,
+        )
     except ComfyUIError as exc:
         # If the checkpoint has no bundled text encoder/VAE, the run fails
         # (ComfyUI reports a generic "error"). Flip the switch node so the
@@ -478,7 +497,10 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
             user_settings.mark_split_checkpoint(effective_ckpt)
             api_workflow[str(switch_node)]["inputs"]["value"] = True
             prompt_id, client_id = await comfy.queue_prompt(api_workflow)
-            filenames = await comfy.wait_for_result(prompt_id, client_id, on_progress=on_progress)
+            filenames = await comfy.wait_for_result(
+                prompt_id, client_id, on_progress=on_progress,
+                progress_node_id=progress_node_id, progress_total=progress_total,
+            )
         else:
             raise
     images = []

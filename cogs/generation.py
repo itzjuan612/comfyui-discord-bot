@@ -9,7 +9,7 @@ from discord.ext import commands
 
 from core import (
     config, comfy, log, user_settings,
-    image_resolution, uuid_hex,
+    image_resolution, encode_resolution, uuid_hex,
     reply_error, ban_guard, check_cooldown, nsfw_blocked, can_manage, download_image,
     deliver_generation,
     schedule_message_deletion,
@@ -851,6 +851,10 @@ class GenerationCog(commands.Cog):
         if scheduler is None:
             scheduler = saved.get("qwen_scheduler")
 
+        # Encode-node resolution budget from the input image area, so the
+        # output follows the input size (32-px grid), capped by config.
+        resolution = encode_resolution(data1, spec.get("max_resolution"))
+
         gen_kwargs = {
             "prompt": prompt,
             "seed": None,
@@ -863,6 +867,7 @@ class GenerationCog(commands.Cog):
             "image_filename": uploaded1,
             # None when omitted: apply_spec drops node 776 + images.image_2.
             "image2_filename": uploaded2,
+            "resolution": resolution,
         }
 
         try:
