@@ -193,65 +193,73 @@ models:
       megapixels_nodes: ["92:110", "92:85"]
   qwen_image:
     t2i:
-      # Node IDs in this workflow are prefixed "459:" (from ComfyUI's graph
-      # export), so they must be quoted as strings in YAML.
+      # API-format workflow: node ids are plain strings.
       file: workflows/t2i/qwen_image_21_t2i.json
       default_model: "qwen_image_2.1_int8_convrot.safetensors"
-      model_node: "459:451"
+      model_node: "126"
       default_text_encoder: "qwen3vl_8b_int8_convrot.safetensors"
-      text_encoder_node: "459:453"
-      # default_text_encoder is also applied to this CLIPLoader, which feeds
-      # the optional Qwen 8B prompt enhancer (TextGenerate node).
-      enhancer_text_encoder_node: "469"
-      # The positive prompt enters through the Google Translate node (auto -> en)
-      # and the enhance switch; the encode node's prompt input is a link into
-      # that switch, so the prompt must be written here instead of prompt_node.
-      prompt_input_node: "468"
+      text_encoder_node: "133"
+      # Default LoRA applied when the command's lora param is omitted.
+      # Empty string (or the "none"/"off" sentinel) disables the loader:
+      # the node is removed and the model chain rewired around it. The bot
+      # also falls back to disabled when the file is not installed in
+      # ComfyUI's models/loras folder. Prompt enhancement (Qwen 8B
+      # TextGenerate) is always on in the workflow itself.
+      lora: "qwen-image-2.1-fix-1.0-comfy.safetensors"
+      lora1_node: "733"
+      # Model chain around the LoRA loader (UNETLoader -> LoRA -> APG).
+      model_chain_start: "126"
+      model_chain_end: "734"
+      # The positive prompt enters through the GoogleTranslateTextNode
+      # (auto -> en) feeding the always-on prompt enhancer; the encode
+      # node's prompt input is a link into that chain, so the prompt must
+      # be written here instead of prompt_node.
+      prompt_input_node: "773"
       prompt_input_key: text
       # GoogleTranslateTextNode: manual_translate is inverted (True = pass the
       # prompt through untranslated, False = translate to English). The bot's
       # translate kwarg writes the opposite of its own value to this input.
-      translate_node: "468"
+      translate_node: "773"
       translate_key: manual_translate
-      # PrimitiveBoolean "Enhance prompt?": True reroutes the prompt through the
-      # Qwen 8B prompt enhancer before encoding. When the enhance kwarg is None
-      # this node is left untouched (workflow default: true).
-      enhance_node: "473"
-      enhance_key: value
-      prompt_node: "459:452"
+      prompt_node: "725"
       prompt_key: prompt
-      negative_node: "459:452"
+      negative_node: "725"
       negative_key: negative_prompt
-      seed_node: "459:458"
+      seed_node: "749"
       seed_key: seed
-      steps_node: "459:458"
-      cfg_node: "459:458"
-      sampler_node: "459:458"
+      steps_node: "748"
+      cfg_node: "748"
+      sampler_node: "748"
       # ResolutionSelector node: megapixels + aspect ratio (replaces width/height).
-      resolution_node: "13"
+      resolution_node: "766"
       megapixels_key: megapixels
       aspect_ratio_key: aspect_ratio
-      # EmptyLatentImage node: batch size only (width/height come from node 13).
-      latent_node: "459:456"
+      # EmptyLatentImage node (width/height come from the ResolutionSelector).
+      latent_node: "741"
     i2i:
       # Single spec covers both 1-image and 2-image edits. When no second
-      # image is given, the LoadImage node 475 is removed from the graph and
-      # the "images.image_2" input is dropped from the encode node 459:474.
+      # image is given, the LoadImage node 776 is removed from the graph and
+      # the "images.image_2" input is dropped from the encode node 725.
       file: workflows/i2i/qwen_image_21_i2i.json
       default_model: "qwen_image_2.1_int8_convrot.safetensors"
-      model_node: "459:451"
+      model_node: "126"
       default_text_encoder: "qwen3vl_8b_int8_convrot.safetensors"
-      text_encoder_node: "459:453"
-      prompt_node: "459:474"
+      text_encoder_node: "133"
+      # Same default LoRA key as t2i: feeds this workflow too (see t2i notes).
+      lora: "qwen-image-2.1-fix-1.0-comfy.safetensors"
+      lora1_node: "733"
+      model_chain_start: "126"
+      model_chain_end: "734"
+      prompt_node: "725"
       prompt_key: prompt
-      seed_node: "459:458"
+      seed_node: "749"
       seed_key: seed
-      steps_node: "459:458"
-      cfg_node: "459:458"
-      sampler_node: "459:458"
-      image_node: "470"
+      steps_node: "748"
+      cfg_node: "748"
+      sampler_node: "748"
+      image_node: "781"
       image_key: "images.image_1"
-      image2_node: "475"
+      image2_node: "776"
       image2_key: "images.image_2"
 """
 
