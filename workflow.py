@@ -5,6 +5,28 @@ import random
 from core import config, comfy, log, normalize_aspect_ratio, last_workflow_by_model, last_ckpt_by_model, ComfyUIError, user_settings
 
 
+# Values that disable the optional LoRA loader. Sentinels usable in the
+# `lora` command parameter to override a config default for one run.
+_LORA_DISABLE_VALUES = {"", "none", "off", "disable", "disabled"}
+
+
+def _resolve_lora(spec: dict, kwargs: dict) -> str:
+    """Effective LoRA filename: command kwarg -> config ``lora`` default.
+
+    Sentinel values (empty string, "none", "off", ...) and a missing default
+    both resolve to "" which disables the loader node (apply_spec then removes
+    it and rewires the model chain around it).
+    """
+    lora = kwargs.get("lora")
+    if lora is None:
+        lora = spec.get("lora")
+    if lora is None:
+        return ""
+    if str(lora).strip().lower() in _LORA_DISABLE_VALUES:
+        return ""
+    return str(lora)
+
+
 def load_workflow(file_path: str) -> dict:
     import json
 
@@ -85,8 +107,7 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     # Qwen Image 2.1). An explicit ``text_encoder`` kwarg wins; otherwise the
     # spec's default is applied so the workflow never depends on whatever
     # filename was saved in the JSON. ``enhancer_text_encoder_node`` (when
-    # present) points at a second CLIPLoader feeding e.g. the Qwen 8B prompt
-    # enhancer and receives the same file.
+    # present) points at a second CLIPLoader and receives the same file.
     if spec.get("text_encoder_node") is not None or spec.get("enhancer_text_encoder_node") is not None:
         effective_encoder = kwargs.get("text_encoder") or spec.get("default_text_encoder")
         if effective_encoder is not None:
@@ -112,26 +133,36 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         input_node = spec.get("prompt_input_node")
         if input_node is not None:
             # Prompt enters through an intermediate node (e.g. Qwen's Google
-            # Translate node feeding an enhance switch); the encode node's
-            # prompt input is a link into that switch, so writing to
-            # prompt_node would clobber the link and bypass translate/enhance.
+            # Translate node feeding the optional prompt enhancer); the
+            # encode node's prompt input is a link into that chain, so
+            # writing to prompt_node would clobber the link and bypass it.
             set_node(input_node, spec.get("prompt_input_key", "text"), prompt)
         else:
             set_node(spec.get("prompt_node"), spec.get("prompt_key", "text"), prompt)
-    # Qwen Image 2.1 T2I: "Enhance prompt?" boolean. None leaves the workflow's
-    # saved default untouched; True/False flips the switch so the prompt is (or
-    # isn't) rewritten by the Qwen 8B prompt enhancer before encoding.
-    enhance = kwargs.get("enhance")
-    if enhance is not None:
-        set_node(spec.get("enhance_node"), spec.get("enhance_key", "value"), bool(enhance))
     # Qwen Image 2.1 T2I: optional prompt translation. The GoogleTranslateTextNode
     # input is inverted (manual_translate: True = pass through untranslated,
-    # False = translate to English), so the node receives the opposite value.
-    # None leaves the workflow default (translate) untouched.
-    translate = kwargs.get("translate")
-    if translate is not None:
-        set_node(spec.get("translate_node"), spec.get("translate_key", "manual_translate"),
-                 not bool(translate))
+    # False = translate to English). Translation is off unless explicitly
+    # enabled: only translate=True translates; None/False pass the prompt
+    # through untranslated. The raw workflow ships manual_translate: false
+    # (translate on), so the input is always rewritten when the node exists.
+    set_node(spec.get("translate_node"), spec.get("translate_key", "manual_translate"),
+             not bool(kwargs.get("translate")))
+    # Qwen Image 2.1 T2I: optional prompt enhancement chain between the
+    # translate node and the encoder (StringConcatenate -> TextGenerate ->
+    # showAnything). Enhancement is off unless explicitly enabled: only
+    # enhance=True keeps the chain; None/False remove those nodes and
+    # rewire the encoder's prompt input directly to the translate node.
+    enhance = kwargs.get("enhance")
+    if not bool(enhance):
+        for node_id in spec.get("enhance_nodes") or []:
+            workflow.pop(str(node_id), None)
+        prompt_node = spec.get("prompt_node")
+        input_node = spec.get("prompt_input_node")
+        if prompt_node is not None and input_node is not None:
+            workflow[str(prompt_node)]["inputs"][spec.get("prompt_key", "prompt")] = [
+                str(input_node),
+                0,
+            ]
     if negative is not None:
         set_node(spec.get("negative_node"), spec.get("negative_key", "text"), negative)
     if seed is not None:
@@ -189,6 +220,7 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     # the model/clip chain is rewired around them.
     lora1 = kwargs.get("lora1")
     lora2 = kwargs.get("lora2")
+    lora = _resolve_lora(spec, kwargs)
     lora_strength = kwargs.get("lora_strength")
 
     if spec.get("lora_strength_node") is not None:
@@ -220,6 +252,23 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
                 workflow[nid]["inputs"]["model"] = [prev, 0]
                 prev = nid
             workflow[str(chain_end)]["inputs"]["model"] = [prev, 0]
+    elif spec.get("model_chain_start") is not None and spec.get("lora1_node") is not None:
+        # Single model-only LoRA loader in a plain chain (Qwen Image 2.1:
+        # UNETLoader -> LoraLoaderModelOnly -> APG). The effective name is the
+        # command's `lora` param or the config `lora` default; empty/missing
+        # removes the node and rewires the chain straight from start to end.
+        nid = str(spec["lora1_node"])
+        if lora:
+            node = workflow[nid]
+            node["inputs"]["lora_name"] = lora
+            if lora_strength is not None:
+                node["inputs"]["strength_model"] = float(lora_strength)
+        else:
+            workflow.pop(nid, None)  # disabled: remove so it is not validated
+            chain_start = spec.get("model_chain_start")
+            chain_end = spec.get("model_chain_end")
+            if chain_start is not None and chain_end is not None:
+                workflow[str(chain_end)]["inputs"]["model"] = [str(chain_start), 0]
     else:
         strength_val = float(lora_strength) if lora_strength is not None else None
         active = []
@@ -375,6 +424,27 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
         log.info("Switching checkpoint %s -> %s; freeing memory", last_ckpt, effective_ckpt)
         await comfy.free_memory()
     last_ckpt_by_model[model_key] = effective_ckpt
+
+    # Qwen LoRA: resolve command param -> config default, then fall back to
+    # disabled when the file is not installed in ComfyUI's models/loras
+    # folder (checked against the TTL cache, refreshed once), so generation
+    # still runs instead of failing LoRA validation. Only specs that declare
+    # a `lora` default key (the Qwen workflows) are checked; SDXL/Z-Image
+    # pass their own lora1/lora2 kwargs and keep their existing behavior.
+    if spec.get("lora") is not None or kwargs.get("lora") is not None:
+        lora = _resolve_lora(spec, kwargs)
+        if lora and spec.get("lora1_node") is not None:
+            try:
+                available = await comfy.fetch_loras()
+                if lora not in available:
+                    available = await comfy.fetch_loras(force=True)
+            except Exception as exc:
+                log.warning("Could not list LoRAs; keeping %r as-is: %s", lora, exc)
+                available = None
+            if available is not None and lora not in available:
+                log.warning("LoRA %r not found in models/loras; disabling the LoRA node.", lora)
+                lora = ""
+        kwargs["lora"] = lora
 
     apply_spec(api_workflow, spec, **kwargs)
 

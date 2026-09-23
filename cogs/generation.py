@@ -68,9 +68,9 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
                 base_lines.append("**Resolution:** " + ", ".join(res_parts))
             base_lines.append(f"**Output:** {image_resolution(images[0])}")
         elif model == "qwen_image":
-            # Workflow defaults: translation on, enhance on (node 473 = true).
-            base_lines.append("**Translation:** " + ("off" if gen_kwargs.get("translate") is False else "on"))
-            base_lines.append("**Prompt enhanced:** " + ("off" if gen_kwargs.get("enhance") is False else "on"))
+            # Both toggles are off unless explicitly enabled.
+            base_lines.append("**Translation:** " + ("on" if gen_kwargs.get("translate") is True else "off"))
+            base_lines.append("**Prompt enhanced:** " + ("on" if gen_kwargs.get("enhance") is True else "off"))
             res_parts = []
             megapixels = gen_kwargs.get("megapixels")
             if megapixels:
@@ -429,19 +429,21 @@ class GenerationCog(commands.Cog):
     @app_commands.choices(sampler=SAMPLER_CHOICES)
     @app_commands.choices(scheduler=SCHEDULER_CHOICES)
     @app_commands.choices(aspect_ratio=ASPECT_RATIO_CHOICES)
+    @app_commands.autocomplete(lora=_sdxl_lora_autocomplete)
     @app_commands.describe(prompt="Text prompt")
     @app_commands.describe(negative="Negative prompt")
-    @app_commands.describe(translate="Translate the prompt to English with Google Translate")
-    @app_commands.describe(enhance="Rewrite the prompt with the Qwen 8B enhancer before generating")
+    @app_commands.describe(translate="Translate the prompt to English with Google Translate (off by default)")
     @app_commands.describe(steps="Sampling steps")
     @app_commands.describe(megapixels="Target resolution in megapixels")
     @app_commands.describe(aspect_ratio="Aspect ratio preset")
     @app_commands.describe(sampler="Sampler (optional)")
     @app_commands.describe(scheduler="Scheduler (optional)")
     @app_commands.describe(cfg="CFG guidance scale")
+    @app_commands.describe(lora="LoRA file (optional; defaults to the config LoRA, type none to disable)")
+    @app_commands.describe(lora_strength="LoRA strength (optional, default 1.0)")
     @app_commands.describe(seed="Seed (optional)")
-    @app_commands.describe(batch_size="Number of images to generate (optional)")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
+    @app_commands.describe(enhance="Rewrite the prompt with the Qwen 8B enhancer (off by default)")
     async def qwen_image(self, interaction: discord.Interaction, prompt: str,
                          negative: str | None = None,
                          translate: bool | None = None,
@@ -452,8 +454,9 @@ class GenerationCog(commands.Cog):
                          sampler: str | None = None,
                          scheduler: str | None = None,
                          cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+                         lora: str | None = None,
+                         lora_strength: float | None = None,
                          seed: int | None = None,
-                         batch_size: Optional[app_commands.Range[int, 1, 8]] = None,
                          stealth: bool | None = None):
         if stealth is None:
             stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
@@ -502,7 +505,8 @@ class GenerationCog(commands.Cog):
             "scheduler": scheduler,
             "megapixels": megapixels,
             "aspect_ratio": aspect_ratio,
-            "batch_size": batch_size,
+            "lora": lora,
+            "lora_strength": lora_strength,
         }
         await run_t2i_generation(interaction, "qwen_image", prompt, stealth, gen_kwargs)
 
@@ -766,6 +770,7 @@ class GenerationCog(commands.Cog):
     @app_commands.command(name="qwen_edit", description="Edit one image (or combine two) into a new image using Qwen Image 2.1")
     @app_commands.choices(sampler=SAMPLER_CHOICES)
     @app_commands.choices(scheduler=SCHEDULER_CHOICES)
+    @app_commands.autocomplete(lora=_sdxl_lora_autocomplete)
     @app_commands.describe(image="First input image (attach from your gallery)")
     @app_commands.describe(prompt="Prompt describing the desired edit")
     @app_commands.describe(image2="Second input image (optional, for combining two images)")
@@ -773,6 +778,8 @@ class GenerationCog(commands.Cog):
     @app_commands.describe(cfg="CFG guidance scale (optional)")
     @app_commands.describe(sampler="Sampler (optional)")
     @app_commands.describe(scheduler="Scheduler (optional)")
+    @app_commands.describe(lora="LoRA file (optional; defaults to the config LoRA, type none to disable)")
+    @app_commands.describe(lora_strength="LoRA strength (optional, default 1.0)")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
     async def qwen_edit(self, interaction: discord.Interaction,
                         image: discord.Attachment, prompt: str,
@@ -781,6 +788,8 @@ class GenerationCog(commands.Cog):
                         cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
                         sampler: str | None = None,
                         scheduler: str | None = None,
+                        lora: str | None = None,
+                        lora_strength: float | None = None,
                         stealth: bool | None = None):
         if stealth is None:
             stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
@@ -849,8 +858,10 @@ class GenerationCog(commands.Cog):
             "cfg": cfg,
             "sampler": sampler,
             "scheduler": scheduler,
+            "lora": lora,
+            "lora_strength": lora_strength,
             "image_filename": uploaded1,
-            # None when omitted: apply_spec drops node 475 + images.image_2.
+            # None when omitted: apply_spec drops node 776 + images.image_2.
             "image2_filename": uploaded2,
         }
 
