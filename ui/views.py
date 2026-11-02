@@ -116,7 +116,7 @@ class RetryButton(Button):
             progress.done = True
             log_job_error(log, "retry failed", exc)
             await interaction.edit_original_response(
-                content=job_error_text("\u274c Retry failed:", exc)
+                content=job_error_text("\u274c Retry failed:", exc), view=None
             )
             schedule_original_response_deletion(interaction)
 

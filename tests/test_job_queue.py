@@ -80,6 +80,45 @@ def test_cancelled_queued_job_never_runs():
     asyncio.run(scenario())
 
 
+def test_cancelling_a_queued_job_frees_it_before_the_running_one_ends():
+    async def scenario():
+        queue = JobQueue()
+        started = []
+        dropped = asyncio.Event()
+
+        async def long_job():
+            started.append("long")
+            await asyncio.sleep(0.3)
+
+        async def queued_job():
+            started.append("queued")
+
+        async def listener(event, coro):
+            # The jobs behind move up on this event, not on the worker's next tick.
+            if event == "finish" and coro is queued.coro:
+                dropped.set()
+
+        queue.register(listener)
+        running = queue.submit(long_job(), name="running")
+        queued = queue.submit(queued_job(), name="queued")
+        await asyncio.sleep(0.01)  # let the first job start
+
+        queued.cancel()
+        queued.cancel()  # idempotent
+
+        # Fails now, while the first job is still running.
+        with pytest.raises(JobCancelled):
+            await asyncio.wait_for(queued, timeout=0.1)
+        assert queue.stats() == (1, 0)
+        assert started == ["long"]  # the cancelled job never started
+        await asyncio.wait_for(dropped.wait(), timeout=1)
+        assert queued.coro.cr_frame is None  # coroutine closed, not leaked
+
+        await running
+
+    asyncio.run(scenario())
+
+
 def test_queued_timeout_drops_a_stale_job():
     async def scenario():
         queue = JobQueue()

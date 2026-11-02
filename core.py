@@ -248,6 +248,10 @@ class ProgressUpdater:
                 # away instead of waiting for the first progress tick.
                 asyncio.create_task(self._edit(self.level, self.pct))
             return
+        if coro is self.job:
+            # Our own job ended before it ever started (cancelled while
+            # queued): leave the message to the caller, which reports it.
+            return
         # A job ahead of us finished: move up one slot in line. We track our
         # position with a counter (decrementing once per job ahead that
         # finishes) rather than re-reading queue stats, so the displayed number
@@ -358,6 +362,10 @@ class QueueWaitUpdater:
                 # only the label while the job prepares.
                 self._schedule_edit(None)
             return
+        if coro is self.job:
+            # Cancelled while queued: the caller writes the cancellation into
+            # this message, so do not draw a queue position over it.
+            return
         # A job ahead of us finished: move up one slot in line. The position
         # is tracked with a decrementing counter (mirroring ProgressUpdater)
         # so it drops smoothly (#3 -> #2 -> #1); at #1 we stop editing, as our
@@ -432,16 +440,18 @@ async def reply_error(interaction: discord.Interaction, message: str, target=Non
     """Post an error message and schedule its deletion.
 
     If ``target`` is given, the error is written into that message (typically
-    the progress message) instead of the interaction's original response.
+    the progress message) instead of the interaction's original response. Any
+    components on that message are dropped: a Cancel button must not outlive
+    the job it belongs to.
     """
     try:
         if target is not None:
-            msg = await target.edit(content=message)
+            msg = await target.edit(content=message, view=None)
             schedule_message_deletion(msg)
         else:
             # edit_original_response() returns an InteractionCallbackResponse,
             # which has no .delete(); use the interaction's own delete method.
-            await interaction.edit_original_response(content=message)
+            await interaction.edit_original_response(content=message, view=None)
             asyncio.create_task(
                 _delete_original_response_after(interaction, ERROR_LIFETIME_SECONDS)
             )
