@@ -121,6 +121,8 @@ models:
       file: workflows/t2i/Ideogram_4_generator.json
       default_model: "ideogram4_int8_convrot.safetensors"
       model_node: "98:23"
+      # model_key names the model input when the loader class is one the bot
+      # does not know; the class selects the input (ckpt_name, unet_name, ...).
       # The workflow has a second UNet loader for the unconditional branch.
       default_model_unconditional: "ideogram4_unconditional_int8_convrot.safetensors"
       model_node_unconditional: "98:154"

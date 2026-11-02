@@ -4,6 +4,7 @@ import copy
 
 import pytest
 
+from workflow import _current_model as workflow_current_model
 from workflow import apply_spec
 
 BASE_SPEC = {
@@ -90,6 +91,26 @@ def test_model_node_pins_the_loader():
     assert api["10"]["inputs"]["ckpt_name"] == "orig.safetensors"
 
 
+def test_model_key_handles_an_unknown_loader_class():
+    graph = base_graph()
+    graph["11"] = {"class_type": "SomeNewLoader", "inputs": {"path": "orig.safetensors"}}
+    spec = {**BASE_SPEC, "model_node": "11", "model_key": "path"}
+    assert patched({"ckpt_name": "new.safetensors"}, spec, graph)["11"]["inputs"]["path"] == \
+        "new.safetensors"
+
+
+def test_unknown_loader_class_without_model_key_raises():
+    graph = base_graph()
+    graph["11"] = {"class_type": "SomeNewLoader", "inputs": {"path": "orig.safetensors"}}
+    with pytest.raises(ValueError, match="model_key"):
+        patched({"ckpt_name": "new.safetensors"}, {**BASE_SPEC, "model_node": "11"}, graph)
+
+
+def test_model_node_pointing_at_a_missing_node_raises():
+    with pytest.raises(ValueError):
+        patched({"ckpt_name": "new.safetensors"}, {**BASE_SPEC, "model_node": "999"})
+
+
 def test_model_selection_without_a_loader_raises():
     graph = base_graph()
     del graph["10"]
@@ -102,6 +123,14 @@ def test_second_model_loader_for_the_unconditional_branch():
     spec = {**BASE_SPEC, "model_node": "11", "model_node_unconditional": "11",
             "default_model_unconditional": "uncond.safetensors"}
     assert patched({}, spec)["11"]["inputs"]["unet_name"] == "uncond.safetensors"
+
+
+def test_unconditional_model_uses_its_declared_key():
+    graph = base_graph()
+    graph["11"] = {"class_type": "DualLoader", "inputs": {"model_b": "orig"}}
+    spec = {**BASE_SPEC, "model_node_unconditional": "11", "model_key_unconditional": "model_b",
+            "default_model_unconditional": "uncond.safetensors"}
+    assert patched({}, spec, graph)["11"]["inputs"]["model_b"] == "uncond.safetensors"
 
 
 def test_text_encoder_default_and_override():
@@ -117,7 +146,9 @@ def test_prompt_can_enter_through_an_intermediate_node():
     graph["40"] = {"class_type": "GoogleTranslateTextNode", "inputs": {"text": ""}}
     api = patched({"prompt": "hola"}, spec, graph)
     assert api["40"]["inputs"]["text"] == "hola"
-    assert api["20"]["inputs"]["text"] == "old prompt"
+    # The encoder consumes that node's output (the prompt was written there),
+    # so its own text input becomes a link to it.
+    assert api["20"]["inputs"]["text"] == ["40", 0]
 
 
 def test_translation_switch_is_inverted():
@@ -140,6 +171,19 @@ def test_enhance_off_removes_chain_and_rewires_the_encoder():
     api = patched({}, spec, graph)
     assert "41" not in api and "42" not in api
     assert api["20"]["inputs"]["prompt"] == ["40", 0]
+
+
+def test_enhance_rewire_uses_the_default_prompt_key():
+    # No prompt_key in the spec: the rewire must write the same input the
+    # prompt was written to ("text"), not a hard-coded "prompt".
+    spec = {**BASE_SPEC, "prompt_node": "20", "prompt_input_node": "40",
+            "enhance_nodes": ["41"]}
+    graph = base_graph()
+    graph["40"] = {"class_type": "GoogleTranslateTextNode", "inputs": {"text": ""}}
+    graph["41"] = {"class_type": "TextGenerate", "inputs": {}}
+    api = patched({}, spec, graph)
+    assert api["20"]["inputs"]["text"] == ["40", 0]
+    assert "prompt" not in api["20"]["inputs"]
 
 
 def test_enhance_on_keeps_the_chain():
@@ -331,3 +375,18 @@ def test_missing_spec_nodes_are_ignored():
 
 def test_unknown_kwargs_are_ignored():
     assert patched({"unrelated": "value"}) == base_graph()
+
+
+def test_current_model_prefers_the_spec_node():
+    graph = base_graph()
+    assert workflow_current_model(graph, {"model_node": "11"}) == "orig-unet.safetensors"
+
+
+def test_current_model_falls_back_to_the_first_loader():
+    # No model_node (e.g. SDXL): the first known loader class wins.
+    assert workflow_current_model(base_graph(), {}) == "orig.safetensors"
+
+
+def test_current_model_returns_none_when_the_graph_has_no_loader():
+    graph = {"30": {"class_type": "KSampler", "inputs": {}}}
+    assert workflow_current_model(graph, {}) is None

@@ -99,6 +99,16 @@ def _set_node(workflow: dict, node_id, key: str, value) -> None:
         workflow[str(node_id)]["inputs"][key] = value
 
 
+def _model_key_for(node: dict, spec: dict, key_name: str = "model_key") -> str | None:
+    """Input that names the model file, for a loader the spec points at.
+
+    ``model_key`` / ``model_key_unconditional`` in the spec win, so a workflow
+    using a loader class the bot does not know still needs no code change; the
+    class table above is only the fallback.
+    """
+    return spec.get(key_name) or _MODEL_LOADER_KEYS.get(node.get("class_type"))
+
+
 def _apply_model(workflow: dict, spec: dict, kwargs: dict) -> None:
     """Point the model loader(s) at the requested file."""
     ckpt_name = kwargs.get("ckpt_name")
@@ -108,16 +118,29 @@ def _apply_model(workflow: dict, spec: dict, kwargs: dict) -> None:
         # unconditional); the spec's model_node pins which one a
         # default_model refers to.
         model_node = spec.get("model_node")
-        for nid, node in workflow.items():
-            key = _MODEL_LOADER_KEYS.get(node.get("class_type"))
+        if model_node is not None:
+            node = workflow.get(str(model_node))
+            if node is None:
+                raise ValueError(
+                    f"Workflow has no node {model_node!r}; cannot select model {ckpt_name!r}."
+                )
+            key = _model_key_for(node, spec)
             if key is None:
-                continue
-            if model_node is not None and str(nid) != str(model_node):
-                continue
+                raise ValueError(
+                    f"Node {model_node!r} is not a known model loader; "
+                    "set model_key in the spec to name its model input."
+                )
             node["inputs"][key] = ckpt_name
-            break
         else:
-            raise ValueError(f"Workflow has no model-loader node; cannot select model {ckpt_name!r}.")
+            # No pinned node: the first known loader class in the graph wins.
+            for node in workflow.values():
+                key = _MODEL_LOADER_KEYS.get(node.get("class_type"))
+                if key is None:
+                    continue
+                node["inputs"][key] = ckpt_name
+                break
+            else:
+                raise ValueError(f"Workflow has no model-loader node; cannot select model {ckpt_name!r}.")
 
     # Ideogram's second UNet loader (unconditional branch) can be overridden
     # independently via the spec's default_model_unconditional / model_node_unconditional.
@@ -125,8 +148,25 @@ def _apply_model(workflow: dict, spec: dict, kwargs: dict) -> None:
     model_node_unconditional = spec.get("model_node_unconditional")
     if default_model_unconditional is not None and model_node_unconditional is not None:
         node = workflow.get(str(model_node_unconditional))
-        if node is not None and node.get("class_type") == "UNETLoader":
-            node["inputs"]["unet_name"] = default_model_unconditional
+        if node is not None:
+            key = _model_key_for(node, spec, "model_key_unconditional")
+            if key is not None:
+                node["inputs"][key] = default_model_unconditional
+
+
+def _current_model(workflow: dict, spec: dict) -> str | None:
+    """The model file this workflow already references (spec node first)."""
+    model_node = spec.get("model_node")
+    if model_node is not None:
+        node = workflow.get(str(model_node))
+        key = _model_key_for(node, spec) if node is not None else None
+        if key and node["inputs"].get(key):
+            return node["inputs"][key]
+    for node in workflow.values():
+        key = _MODEL_LOADER_KEYS.get(node.get("class_type"))
+        if key and node["inputs"].get(key):
+            return node["inputs"][key]
+    return None
 
 
 def _apply_text_encoder(workflow: dict, spec: dict, kwargs: dict) -> None:
@@ -184,10 +224,10 @@ def _apply_prompt(workflow: dict, spec: dict, kwargs: dict) -> None:
         prompt_node = spec.get("prompt_node")
         input_node = spec.get("prompt_input_node")
         if prompt_node is not None and input_node is not None:
-            workflow[str(prompt_node)]["inputs"][spec.get("prompt_key", "prompt")] = [
-                str(input_node),
-                0,
-            ]
+            # Same input the prompt was written to above, so a spec without
+            # prompt_key rewires the encoder it actually patched.
+            prompt_key = spec.get("prompt_key", "text")
+            workflow[str(prompt_node)]["inputs"][prompt_key] = [str(input_node), 0]
     # Flux 3 Klein T2I: the Interruptor (If/Else Switch) picks between the raw
     # prompt and the upsampler's text. Its inputs are lazy, so off skips the
     # enhancer entirely. Off unless enhance=True is passed.
@@ -490,11 +530,7 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
     if effective_ckpt is None:
         default_ckpt = spec.get("default_model")
         if default_ckpt is None:
-            for node in api_workflow.values():
-                key = _MODEL_LOADER_KEYS.get(node.get("class_type"))
-                if key and node["inputs"].get(key):
-                    default_ckpt = node["inputs"][key]
-                    break
+            default_ckpt = _current_model(api_workflow, spec)
         if default_ckpt is not None:
             if model_key == "sdxl":
                 try:
