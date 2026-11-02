@@ -21,6 +21,7 @@ from core import (
     _parse_opt_float,
     _parse_opt_int,
     _parse_opt_str,
+    attach_cancel_button,
     ban_guard,
     can_manage,
     check_cooldown,
@@ -41,7 +42,7 @@ from core import (
     user_settings,
     uuid_hex,
 )
-from job_queue import job_queue
+from job_queue import job_error_text, job_queue
 from llm_client import call_llm, llm_model_unload, resolve_reasoning_effort
 from workflow import run_image, run_text_workflow
 
@@ -89,6 +90,7 @@ class RetryButton(Button):
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"retry_{params['model']}")
         progress.arm(job)
+        attach_cancel_button(progress_msg, fut, interaction.user.id)
         try:
             images, meta = await fut
             progress.done = True
@@ -105,7 +107,7 @@ class RetryButton(Button):
         except Exception as exc:
             progress.done = True
             log.exception("retry failed")
-            await interaction.edit_original_response(content=f"\u274c Retry failed: {exc}")
+            await interaction.edit_original_response(content=job_error_text("\u274c Retry failed:", exc))
             schedule_original_response_deletion(interaction)
 
 
@@ -200,6 +202,7 @@ class UpscaleModelButton(Button):
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"{model}_upscale")
         progress.arm(job)
+        attach_cancel_button(progress_msg, fut, interaction.user.id)
         try:
             images, meta = await fut
             progress.done = True
@@ -224,7 +227,7 @@ class UpscaleModelButton(Button):
         except Exception as exc:
             progress.done = True
             logging.getLogger("bot").exception("upscale failed")
-            await reply_error(interaction, f"\u274c Upscaling failed: {exc}", target=progress_msg)
+            await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc), target=progress_msg)
 
 
 class UpscaleModelView(View):
@@ -336,6 +339,7 @@ class CheckpointPickerView(View):
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"{self.model_key}_upscale")
         progress.arm(job)
+        attach_cancel_button(progress_msg, fut, interaction.user.id)
         try:
             images, meta = await fut
             progress.done = True
@@ -363,7 +367,7 @@ class CheckpointPickerView(View):
         except Exception as exc:
             progress.done = True
             logging.getLogger("bot").exception("checkpoint upscale failed")
-            await reply_error(interaction, f"\u274c Upscaling failed: {exc}", target=progress_msg)
+            await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc), target=progress_msg)
 
     async def on_timeout(self):
         try:
@@ -588,6 +592,7 @@ class FluxEditModal(Modal):
             job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
             fut = job_queue.submit(job, lane="comfyui", name="flux3_klein_i2i")
             progress.arm(job)
+            attach_cancel_button(progress_msg, fut, interaction.user.id)
             images, meta = await fut
             progress.done = True
             base_lines = [
@@ -606,7 +611,7 @@ class FluxEditModal(Modal):
         except Exception as exc:
             progress.done = True
             log.exception("Flux Edit failed")
-            await reply_error(interaction, f"\u274c Image edit failed: {exc}", target=progress_msg)
+            await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
 class QwenEditModal(Modal):
     """Modal form for editing a generated image via the single-image
     Qwen Image 2.1 edit workflow.
@@ -756,6 +761,7 @@ class QwenEditModal(Modal):
             job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
             fut = job_queue.submit(job, lane="comfyui", name="qwen_image_i2i")
             progress.arm(job)
+            attach_cancel_button(progress_msg, fut, interaction.user.id)
             images, meta = await fut
             progress.done = True
             display_model = meta.get("ckpt_name") or model
@@ -775,7 +781,7 @@ class QwenEditModal(Modal):
         except Exception as exc:
             progress.done = True
             log.exception("Qwen Edit failed")
-            await reply_error(interaction, f"\u274c Image edit failed: {exc}", target=progress_msg)
+            await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
 
 
 class FluxEditButton(Button):
@@ -815,6 +821,50 @@ class QwenEditButton(Button):
         params = generation_store.get(interaction.message.id)
         default_stealth = bool(params.get("stealth", False)) if params else False
         await interaction.response.send_modal(QwenEditModal(default_stealth=default_stealth))
+
+
+class CancelButton(Button):
+    """Stops the generation behind a progress message, queued or running."""
+
+    def __init__(self):
+        super().__init__(label="Cancel", emoji="\u23f9\ufe0f", style=discord.ButtonStyle.danger)
+
+    async def callback(self, interaction: discord.Interaction):
+        if await ban_guard(interaction):
+            return
+        view: CancelView = self.view
+        if view.user_id and view.user_id != interaction.user.id \
+                and not can_manage(interaction.user.id):
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f You can only cancel your own generation.", ephemeral=True
+            )
+            return
+        if view.job is None or view.job.done:
+            await interaction.response.send_message(
+                content="\u2139\ufe0f That generation already finished.", ephemeral=True
+            )
+            return
+        log.info("Cancel clicked for message %s by %s", interaction.message.id, interaction.user.id)
+        view.job.cancel()
+        self.disabled = True
+        self.label = "Cancelling\u2026"
+        await interaction.response.edit_message(view=view)
+
+
+class CancelView(View):
+    """One-off view on a generation's progress message.
+
+    Not persistent: the message only lives for one generation, so there is
+    nothing to cancel after a restart. ``user_id`` restricts the button to the
+    user who started the generation (plus admins), since progress messages are
+    public unless the command asked for an ephemeral reply.
+    """
+
+    def __init__(self, job, user_id: int | None = None):
+        super().__init__(timeout=3600)
+        self.job = job
+        self.user_id = user_id
+        self.add_item(CancelButton())
 
 
 class GenerationView(View):

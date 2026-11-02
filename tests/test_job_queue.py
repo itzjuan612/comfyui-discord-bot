@@ -10,6 +10,7 @@ from job_queue import (
     JobQueuedTimeout,
     JobQueueManager,
     JobRunTimeout,
+    job_error_text,
 )
 
 
@@ -212,3 +213,35 @@ def test_wait_drained_returns_when_idle():
         assert queue.stats() == (0, 0)
 
     asyncio.run(scenario())
+
+
+def test_job_done_flag_tracks_completion():
+    async def scenario():
+        queue = JobQueue()
+        gate = asyncio.Event()
+
+        async def work():
+            await gate.wait()
+            return 1
+
+        job = queue.submit(work())
+        assert not job.done
+        gate.set()
+        assert await job == 1
+        assert job.done
+
+    asyncio.run(scenario())
+
+
+def test_error_text_reports_cancellations_without_the_failure_prefix():
+    prefix = "\u274c Generation failed:"
+    assert job_error_text(prefix, JobCancelled("Cancelled")) == "\u23f9\ufe0f Cancelled."
+    assert job_error_text(prefix, JobQueuedTimeout("Timed out waiting in the queue")) == \
+        "\u23f2\ufe0f Timed out waiting in the queue."
+    assert job_error_text(prefix, JobRunTimeout("Stopped after exceeding the 300s time limit")) == \
+        "\u23f2\ufe0f Stopped after exceeding the 300s time limit."
+
+
+def test_error_text_keeps_the_prefix_for_real_failures():
+    assert job_error_text("\u274c Generation failed:", ValueError("boom")) == \
+        "\u274c Generation failed: boom"

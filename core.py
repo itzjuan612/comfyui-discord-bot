@@ -423,6 +423,24 @@ async def reply_error(interaction: discord.Interaction, message: str, target=Non
             return
 
 
+def attach_cancel_button(message, job, user_id: int) -> None:
+    """Put a Cancel button on a job's progress message.
+
+    The edit runs in its own task so the caller can await the job immediately;
+    failing to attach (deleted message, missing permissions) must never affect
+    the generation itself.
+    """
+    from ui.views import CancelView  # lazy: ui.views imports this module
+
+    async def attach() -> None:
+        try:
+            await message.edit(view=CancelView(job, user_id))
+        except Exception as exc:
+            log.warning("could not attach the cancel button: %s", exc)
+
+    asyncio.create_task(attach())
+
+
 async def ban_guard(interaction: discord.Interaction) -> bool:
     """True if the user is banned; sends the ban notice.
 

@@ -15,6 +15,7 @@ from core import (
     UPSCALE_CHOICES,
     ComfyUIError,
     ProgressUpdater,
+    attach_cancel_button,
     ban_guard,
     can_manage,
     check_cooldown,
@@ -32,7 +33,7 @@ from core import (
     user_settings,
     uuid_hex,
 )
-from job_queue import job_queue
+from job_queue import job_error_text, job_queue
 from ui.autocomplete import (
     _sdxl_lora_autocomplete,
     _sdxl_model_autocomplete,
@@ -66,6 +67,7 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"{model}_t2i")
         progress.arm(job)
+        attach_cancel_button(progress_msg, fut, interaction.user.id)
         images, meta = await fut
         progress.done = True
         log.info("%s: got %d images", model, len(images))
@@ -120,7 +122,7 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
     except Exception as exc:
         progress.done = True
         log.exception("generation failed")
-        await reply_error(interaction, f"\u274c Generation failed: {exc}")
+        await reply_error(interaction, job_error_text("\u274c Generation failed:", exc))
 
 
 
@@ -700,6 +702,7 @@ class GenerationCog(commands.Cog):
             )
             fut = job_queue.submit(job, lane="comfyui", name=f"{model}_upscale")
             progress.arm(job)
+            attach_cancel_button(progress_msg, fut, interaction.user.id)
             images, meta = await fut
             progress.done = True
             base_desc = (
@@ -724,7 +727,7 @@ class GenerationCog(commands.Cog):
             except UnboundLocalError:
                 pass
             logging.getLogger("bot").exception("upscale failed")
-            await reply_error(interaction, f"\u274c Upscaling failed: {exc}")
+            await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc))
 
 
     @app_commands.command(name="flux_edit", description="Edit one image (or combine two) into a new image using Flux 3 Klein")
@@ -833,6 +836,7 @@ class GenerationCog(commands.Cog):
             job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
             fut = job_queue.submit(job, lane="comfyui", name="flux3_klein_i2i")
             progress.arm(job)
+            attach_cancel_button(progress_msg, fut, interaction.user.id)
             images, meta = await fut
             progress.done = True
             display_model = meta.get("ckpt_name") or model
@@ -852,7 +856,7 @@ class GenerationCog(commands.Cog):
         except Exception as exc:
             progress.done = True
             log.exception("flux_edit failed")
-            await reply_error(interaction, f"\u274c Image-to-image failed: {exc}", target=progress_msg)
+            await reply_error(interaction, job_error_text("\u274c Image-to-image failed:", exc), target=progress_msg)
 
     @app_commands.command(name="qwen_edit", description="Edit one image (or combine two) into a new image using Qwen Image 2.1")
     @app_commands.choices(sampler=SAMPLER_CHOICES)
@@ -961,6 +965,7 @@ class GenerationCog(commands.Cog):
             job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
             fut = job_queue.submit(job, lane="comfyui", name="qwen_image_i2i")
             progress.arm(job)
+            attach_cancel_button(progress_msg, fut, interaction.user.id)
             images, meta = await fut
             progress.done = True
             display_model = meta.get("ckpt_name") or model
@@ -980,7 +985,7 @@ class GenerationCog(commands.Cog):
         except Exception as exc:
             progress.done = True
             log.exception("qwen_edit failed")
-            await reply_error(interaction, f"\u274c Image edit failed: {exc}", target=progress_msg)
+            await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
     @app_commands.command(name="flush", description="Unload all models and execution cache from ComfyUI")
     async def flush(self, interaction: discord.Interaction):
         if not can_manage(interaction.user.id):

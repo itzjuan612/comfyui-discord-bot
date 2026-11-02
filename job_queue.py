@@ -22,6 +22,19 @@ class JobRunTimeout(JobCancelled):
     """Raised when a running job exceeded its execution budget."""
 
 
+def job_error_text(prefix: str, exc: Exception) -> str:
+    """Failure line for a generation path.
+
+    A cancelled or timed-out job is not a failure, so it gets its own wording
+    instead of the caller's "❌ … failed:" prefix.
+    """
+    if isinstance(exc, (JobQueuedTimeout, JobRunTimeout)):
+        return f"\u23f2\ufe0f {exc}."
+    if isinstance(exc, JobCancelled):
+        return "\u23f9\ufe0f Cancelled."
+    return f"{prefix} {exc}"
+
+
 def _timeout_setting(key: str, default: float | None) -> float | None:
     """Read a ``queueing.<key>`` seconds value; 0 or None disables it."""
     value = config.get("queueing", {}).get(key)
@@ -70,6 +83,11 @@ class Job:
     @property
     def cancelled(self) -> bool:
         return self._cancel_event.is_set()
+
+    @property
+    def done(self) -> bool:
+        """True once the job has a result, failed, timed out or was cancelled."""
+        return self._future.done()
 
     def cancel(self) -> None:
         """Mark this job for cancellation. Safe to call from any task."""

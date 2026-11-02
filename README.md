@@ -282,6 +282,8 @@ Users whose job must wait see their queue position prepended to the progress mes
 
 Every job has a budget: one that waits longer than `queued_timeout` is dropped (a Discord interaction can no longer be answered after 15 minutes anyway), and one that runs longer than `run_timeout` is cancelled. A cancelled ComfyUI job also calls `/interrupt` on the server so the GPU stops sampling a prompt nobody will see.
 
+Each progress message carries a **Cancel** button. Pressing it drops the job if it is still waiting in line, or cancels the running one (interrupting ComfyUI's sampling). Only the user who started the generation — or an admin — can press it, and it reports "Cancelled" rather than an error.
+
 ## Storage
 
 Three SQLite databases are created automatically in the project folder:
