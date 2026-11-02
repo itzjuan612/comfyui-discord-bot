@@ -42,7 +42,7 @@ from core import (
     user_settings,
     uuid_hex,
 )
-from job_queue import job_error_text, job_queue
+from job_queue import job_error_text, job_queue, log_job_error
 from llm_client import call_llm, llm_model_unload, resolve_reasoning_effort
 from workflow import run_image, run_text_workflow
 
@@ -106,7 +106,7 @@ class RetryButton(Button):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("retry failed")
+            log_job_error(log, "retry failed", exc)
             await interaction.edit_original_response(content=job_error_text("\u274c Retry failed:", exc))
             schedule_original_response_deletion(interaction)
 
@@ -226,7 +226,7 @@ class UpscaleModelButton(Button):
             )
         except Exception as exc:
             progress.done = True
-            logging.getLogger("bot").exception("upscale failed")
+            log_job_error(log, "upscale failed", exc)
             await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc), target=progress_msg)
 
 
@@ -366,7 +366,7 @@ class CheckpointPickerView(View):
             )
         except Exception as exc:
             progress.done = True
-            logging.getLogger("bot").exception("checkpoint upscale failed")
+            log_job_error(log, "checkpoint upscale failed", exc)
             await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc), target=progress_msg)
 
     async def on_timeout(self):
@@ -610,7 +610,7 @@ class FluxEditModal(Modal):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("Flux Edit failed")
+            log_job_error(log, "Flux Edit failed", exc)
             await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
 class QwenEditModal(Modal):
     """Modal form for editing a generated image via the single-image
@@ -780,7 +780,7 @@ class QwenEditModal(Modal):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("Qwen Edit failed")
+            log_job_error(log, "Qwen Edit failed", exc)
             await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
 
 

@@ -33,7 +33,7 @@ from core import (
     user_settings,
     uuid_hex,
 )
-from job_queue import job_error_text, job_queue
+from job_queue import job_error_text, job_queue, log_job_error
 from ui.autocomplete import (
     _sdxl_lora_autocomplete,
     _sdxl_model_autocomplete,
@@ -121,7 +121,7 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
         )
     except Exception as exc:
         progress.done = True
-        log.exception("generation failed")
+        log_job_error(log, "generation failed", exc)
         await reply_error(interaction, job_error_text("\u274c Generation failed:", exc))
 
 
@@ -726,7 +726,7 @@ class GenerationCog(commands.Cog):
                 progress.done = True
             except UnboundLocalError:
                 pass
-            logging.getLogger("bot").exception("upscale failed")
+            log_job_error(log, "upscale failed", exc)
             await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc))
 
 
@@ -855,7 +855,7 @@ class GenerationCog(commands.Cog):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("flux_edit failed")
+            log_job_error(log, "flux_edit failed", exc)
             await reply_error(interaction, job_error_text("\u274c Image-to-image failed:", exc), target=progress_msg)
 
     @app_commands.command(name="qwen_edit", description="Edit one image (or combine two) into a new image using Qwen Image 2.1")
@@ -984,7 +984,7 @@ class GenerationCog(commands.Cog):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("qwen_edit failed")
+            log_job_error(log, "qwen_edit failed", exc)
             await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
     @app_commands.command(name="flush", description="Unload all models and execution cache from ComfyUI")
     async def flush(self, interaction: discord.Interaction):

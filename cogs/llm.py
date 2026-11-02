@@ -19,7 +19,7 @@ from core import (
     reply_error,
     schedule_message_deletion,
 )
-from job_queue import job_error_text, job_queue
+from job_queue import job_error_text, job_queue, log_job_error
 from llm_client import (
     call_llm,
     fetch_llm_models,
@@ -176,7 +176,7 @@ class LLMCog(commands.Cog):
                 try:
                     await fut
                 except Exception as exc:
-                    log.exception("gen_prompt session failed")
+                    log_job_error(log, "gen_prompt session failed", exc)
                     waiter.disarm()
                     await reply_error(
                         interaction,

@@ -1,6 +1,7 @@
 """Tests for queue lanes: ordering, cancellation and time budgets."""
 
 import asyncio
+import logging
 
 import pytest
 
@@ -11,6 +12,7 @@ from job_queue import (
     JobQueueManager,
     JobRunTimeout,
     job_error_text,
+    log_job_error,
 )
 
 
@@ -245,3 +247,24 @@ def test_error_text_reports_cancellations_without_the_failure_prefix():
 def test_error_text_keeps_the_prefix_for_real_failures():
     assert job_error_text("\u274c Generation failed:", ValueError("boom")) == \
         "\u274c Generation failed: boom"
+
+
+def test_log_job_error_downgrades_cancellations(caplog):
+    caplog.set_level(logging.INFO)
+    try:
+        raise JobCancelled("Cancelled")
+    except JobCancelled as exc:
+        log_job_error(logging.getLogger("job_queue"), "generation failed", exc)
+    record = caplog.records[-1]
+    assert record.levelno == logging.INFO
+    assert record.getMessage() == "generation failed: Cancelled"
+
+
+def test_log_job_error_keeps_the_traceback_for_real_failures(caplog):
+    try:
+        raise ValueError("boom")
+    except ValueError as exc:
+        log_job_error(logging.getLogger("job_queue"), "generation failed", exc)
+    record = caplog.records[-1]
+    assert record.levelno == logging.ERROR
+    assert record.exc_info is not None

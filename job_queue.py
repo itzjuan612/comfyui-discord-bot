@@ -35,6 +35,18 @@ def job_error_text(prefix: str, exc: Exception) -> str:
     return f"{prefix} {exc}"
 
 
+def log_job_error(logger: logging.Logger, message: str, exc: Exception) -> None:
+    """Log a job failure: cancellations are a normal outcome, not an error.
+
+    Call it from the ``except`` block so ``logger.exception`` still captures
+    the traceback for real failures.
+    """
+    if isinstance(exc, JobCancelled):
+        logger.info("%s: %s", message, exc)
+    else:
+        logger.exception(message)
+
+
 def _timeout_setting(key: str, default: float | None) -> float | None:
     """Read a ``queueing.<key>`` seconds value; 0 or None disables it."""
     value = config.get("queueing", {}).get(key)
