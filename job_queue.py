@@ -66,6 +66,11 @@ DEFAULT_QUEUED_TIMEOUT = 900.0
 # No default run budget: ComfyUI's own poll timeout already bounds a prompt.
 DEFAULT_RUN_TIMEOUT: float | None = None
 
+# Resolved once at import: config is read at startup and /reload does not
+# re-read it, so a malformed value is warned about once, not per job.
+QUEUED_TIMEOUT = _timeout_setting("queued_timeout", DEFAULT_QUEUED_TIMEOUT)
+RUN_TIMEOUT = _timeout_setting("run_timeout", DEFAULT_RUN_TIMEOUT)
+
 
 @dataclass(eq=False)
 class Job:
@@ -124,9 +129,14 @@ class JobQueue:
     has finished.
     """
 
+    # How long a cancel hook (e.g. ComfyUI /interrupt) may take before it is
+    # abandoned, so an unreachable server cannot stall the queue.
+    CANCEL_HOOK_TIMEOUT = 15.0
+
     def __init__(self):
         self._queue = asyncio.Queue()
         self._worker_task = None
+        self._current: Job | None = None
         self._pending = 0
         self._active = 0
         self._drained = asyncio.Event()
@@ -145,11 +155,13 @@ class JobQueue:
             # Job moves from the queue to the running slot.
             self._pending -= 1
             self._active += 1
+            self._current = job
             for callback in list(self._listeners):
                 asyncio.create_task(self._fire(callback, "start", job.coro))
             try:
                 await self._run(job)
             finally:
+                self._current = None
                 self._active -= 1
                 if self._pending == 0 and self._active == 0:
                     self._drained.set()
@@ -200,14 +212,22 @@ class JobQueue:
             await asyncio.gather(work, cancel_wait, return_exceptions=True)
 
     async def _stop(self, job: Job, work: asyncio.Future, exc: Exception) -> None:
-        """Cancel the running coroutine, stop the resource, fail the job."""
+        """Cancel the running coroutine and stop the resource it holds.
+
+        The cancel hook fires first and runs while the coroutine unwinds: an
+        external resource (ComfyUI sampling) must not keep working just because
+        our own cleanup is still in flight. The hook is bounded so an
+        unreachable server cannot wedge the worker.
+        """
         work.cancel()
-        await asyncio.gather(work, return_exceptions=True)
         if job.on_cancel is not None:
             try:
-                await job.on_cancel()
+                await asyncio.wait_for(job.on_cancel(), timeout=self.CANCEL_HOOK_TIMEOUT)
+            except asyncio.TimeoutError:
+                log.warning("cancel hook for %s timed out", job.name)
             except Exception:
                 log.exception("on_cancel callback failed for %s", job.name)
+        await asyncio.gather(work, return_exceptions=True)
         log.info("job %s stopped: %s", job.name, exc)
         self._finish(job, exc=exc)
 
@@ -256,16 +276,8 @@ class JobQueue:
         job = Job(
             coro,
             name=name,
-            queued_timeout=(
-                _timeout_setting("queued_timeout", DEFAULT_QUEUED_TIMEOUT)
-                if queued_timeout is None
-                else queued_timeout
-            ),
-            run_timeout=(
-                _timeout_setting("run_timeout", DEFAULT_RUN_TIMEOUT)
-                if run_timeout is None
-                else run_timeout
-            ),
+            queued_timeout=QUEUED_TIMEOUT if queued_timeout is None else queued_timeout,
+            run_timeout=RUN_TIMEOUT if run_timeout is None else run_timeout,
             on_cancel=on_cancel,
         )
         self._queue.put_nowait(job)
@@ -277,6 +289,30 @@ class JobQueue:
     async def wait_drained(self) -> None:
         """Await until no job is running and none are queued."""
         await self._drained.wait()
+
+    async def shutdown(self, timeout: float = 5.0) -> None:
+        """Cancel everything still queued or running (bot shutdown).
+
+        Queued jobs are dropped without starting; the running job is cancelled
+        through the normal path, so its cancel hook fires and the external
+        resource (ComfyUI) stops before the process exits.
+        """
+        while not self._queue.empty():
+            job: Job = self._queue.get_nowait()
+            self._pending -= 1
+            job.cancel()
+            job.coro.close()
+            self._finish(job, exc=JobCancelled("Bot is shutting down"))
+        if self._pending == 0 and self._active == 0:
+            self._drained.set()
+        if self._current is not None:
+            self._current.cancel()
+        try:
+            await asyncio.wait_for(self.wait_drained(), timeout=timeout)
+        except asyncio.TimeoutError:
+            log.warning("queue did not drain within %ss; stopping the worker", timeout)
+        if self._worker_task is not None and not self._worker_task.done():
+            self._worker_task.cancel()
 
     def stats(self) -> tuple[int, int]:
         """Return ``(active, pending)`` counts."""
@@ -338,6 +374,11 @@ class JobQueueManager:
         """Await until every lane has no running or queued jobs."""
         for q in self._lanes.values():
             await q.wait_drained()
+
+    async def shutdown(self, timeout: float = 5.0) -> None:
+        """Stop every lane: drop queued jobs and interrupt the running one."""
+        for q in self._lanes.values():
+            await q.shutdown(timeout)
 
     def total_jobs(self) -> int:
         """Total number of jobs (running or queued) across all lanes."""

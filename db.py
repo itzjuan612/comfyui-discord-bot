@@ -42,7 +42,18 @@ class Database:
 
     @contextmanager
     def locked(self):
-        """Yield the shared connection while holding this database's lock."""
+        """Yield the shared connection while holding this database's lock.
+
+        Commits on a clean exit and rolls back on an exception, so a writer
+        cannot lose an UPDATE by forgetting ``conn.commit()`` (the call sites
+        still commit explicitly; this only makes it impossible to miss).
+        """
         conn = self._connect()
         with self._lock:
-            yield conn
+            try:
+                yield conn
+            except BaseException:
+                conn.rollback()
+                raise
+            else:
+                conn.commit()
