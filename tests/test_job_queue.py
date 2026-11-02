@@ -179,6 +179,84 @@ def test_failing_on_cancel_does_not_swallow_the_timeout():
     asyncio.run(scenario())
 
 
+def test_cancel_hook_offers_to_stop_the_resource_before_the_coroutine_is_collected():
+    async def scenario():
+        queue = JobQueue()
+        order = []
+
+        async def forever():
+            try:
+                await asyncio.sleep(30)
+            finally:
+                # Slow cleanup: the interrupt must not wait for this.
+                await asyncio.sleep(0.05)
+                order.append("cleanup")
+
+        async def hook():
+            order.append("interrupt")
+
+        job = queue.submit(forever(), run_timeout=0.02, on_cancel=hook)
+        with pytest.raises(JobRunTimeout):
+            await job
+        assert order == ["interrupt", "cleanup"]
+
+    asyncio.run(scenario())
+
+
+def test_cancel_hook_is_bounded():
+    async def scenario():
+        queue = JobQueue()
+        queue.CANCEL_HOOK_TIMEOUT = 0.02
+
+        async def forever():
+            await asyncio.sleep(30)
+
+        async def hanging_hook():
+            await asyncio.sleep(30)
+
+        job = queue.submit(forever(), run_timeout=0.01, on_cancel=hanging_hook)
+        with pytest.raises(JobRunTimeout):
+            await asyncio.wait_for(job, timeout=5)
+
+    asyncio.run(scenario())
+
+
+def test_shutdown_drops_queued_jobs_and_stops_the_running_one():
+    async def scenario():
+        queue = JobQueue()
+        stopped = []
+
+        async def forever():
+            await asyncio.sleep(30)
+
+        async def hook():
+            stopped.append(True)
+
+        running = queue.submit(forever(), on_cancel=hook)
+        queued = queue.submit(forever())
+        await asyncio.sleep(0.01)  # let the first job start
+
+        await queue.shutdown(timeout=5)
+
+        assert stopped == [True]
+        with pytest.raises(JobCancelled):
+            await running
+        with pytest.raises(JobCancelled):
+            await queued
+        assert queue.stats() == (0, 0)
+
+    asyncio.run(scenario())
+
+
+def test_shutdown_on_an_idle_queue_returns_immediately():
+    async def scenario():
+        queue = JobQueue()
+        await asyncio.wait_for(queue.shutdown(timeout=1), timeout=2)
+        assert queue.stats() == (0, 0)
+
+    asyncio.run(scenario())
+
+
 def test_listeners_see_start_and_finish():
     async def scenario():
         queue = JobQueue()

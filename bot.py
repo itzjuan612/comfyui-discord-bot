@@ -38,7 +38,13 @@ from ui.views import GenerationView
 
 @bot.event
 async def on_close():
-    """Close the shared aiohttp session when the bot shuts down."""
+    """Stop outstanding ComfyUI work, then close the shared aiohttp session.
+
+    Interrupting before ``close_session()`` matters: the cancel hook posts to
+    ComfyUI over that session. Without this, a Ctrl+C mid-generation closes the
+    loop and leaves the GPU sampling a prompt nobody will see.
+    """
+    await job_queue.shutdown()
     await close_session()
 
 

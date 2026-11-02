@@ -1,5 +1,9 @@
 """Round-trip tests for the three SQLite-backed modules (temp databases)."""
 
+import sqlite3
+
+import pytest
+
 import db
 import generation_store
 import moderation
@@ -67,3 +71,32 @@ def test_moderation_admins_and_bans(monkeypatch, tmp_path):
     assert moderation.is_banned(9) and moderation.get_bans() == [9]
     moderation.unban(9)
     assert not moderation.is_banned(9)
+
+
+def test_locked_commits_even_when_the_caller_forgets(tmp_path):
+    path = str(tmp_path / "commit.db")
+    database = db.Database(path)
+    with database.locked() as conn:
+        conn.execute("CREATE TABLE t (v TEXT)")
+
+    # No explicit commit(): the context manager must persist the row.
+    with database.locked() as conn:
+        conn.execute("INSERT INTO t VALUES ('x')")
+
+    with sqlite3.connect(path) as other:
+        assert other.execute("SELECT v FROM t").fetchall() == [("x",)]
+
+
+def test_locked_rolls_back_on_exception(tmp_path):
+    path = str(tmp_path / "rollback.db")
+    database = db.Database(path)
+    with database.locked() as conn:
+        conn.execute("CREATE TABLE t (v TEXT)")
+
+    with pytest.raises(RuntimeError):
+        with database.locked() as conn:
+            conn.execute("INSERT INTO t VALUES ('y')")
+            raise RuntimeError("boom")
+
+    with sqlite3.connect(path) as other:
+        assert other.execute("SELECT v FROM t").fetchall() == []

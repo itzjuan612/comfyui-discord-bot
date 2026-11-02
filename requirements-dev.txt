@@ -1,4 +1,6 @@
 # Development tooling. The runtime needs requirements.txt as well; the tests
 # themselves are offline (they stub `core`, so no discord.py/aiohttp needed).
+# Keep ruff in the same minor as the rev in .pre-commit-config.yaml, otherwise
+# the hook and CI can disagree about fixes.
 pytest>=8
-ruff>=0.6
+ruff>=0.17,<0.18
