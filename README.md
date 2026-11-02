@@ -224,11 +224,13 @@ Key modules:
 | `comfyui_client.py` | Async HTTP/WS client for ComfyUI (`/prompt`, `/history`, `/view`, `/upload/image`, `/free`); caches the checkpoint, LoRA, and diffusion-model listings (60s TTL) with a force-refresh fallback when validating a user-supplied name |
 | `workflow.py` | Loads workflow JSON, converts graph format to API format, patches node inputs from config specs (including LoRA wiring and the SDXL split-checkpoint switch), and runs image/text workflows with automatic split-checkpoint retry |
 | `llm_client.py` | OpenAI-compatible LLM client: model listing, load/unload, reasoning-effort probing, cached model list |
-| `job_queue.py` | Configurable serial job queue (unified or separate lanes) that serializes ComfyUI generations and LLM jobs; provides queue-position/waiting messages |
+| `job_queue.py` | Configurable serial job queue (unified or separate lanes) that serializes ComfyUI generations and LLM jobs; provides queue-position/waiting messages, per-job cancellation and queue/run time budgets |
+| `db.py` | Shared SQLite plumbing: one persistent WAL connection per database file, serialized access, `busy_timeout` |
 | `config_loader.py` | Loads `config.yaml` (auto-generates it with defaults if missing) and backfills workflow model defaults |
 | `user_settings.py` | Per-user defaults (SQLite) |
 | `generation_store.py` | Persisted generation params per message (SQLite) |
 | `moderation.py` | Admin/ban lists (SQLite) |
+| `tests/` | Offline pytest suite for the graph converter, the spec patchers and the job queue (`pip install -r requirements-dev.txt && pytest`) |
 | `nsfw_guard.py` | Keyword NSFW filter + EraX-NSFW-V1.0 CPU ONNX image detector |
 | `download_erax.py` | Downloads EraX-NSFW-V1.0 detector on boot if it's missing |
 | `diag.py` | Standalone diagnostic: prints local vs. server-side slash commands for debugging sync issues |
@@ -268,13 +270,21 @@ Resource-heavy work — ComfyUI image generation and the `/gen_prompt` LLM pipel
 
 ```yaml
 queueing:
-  mode: unified   # or "separate"
+  mode: unified        # or "separate"
+  queued_timeout: 900  # seconds a job may wait in line (0 = no limit)
+  run_timeout: 0       # seconds a job may run (0 = no limit)
 ```
 
 - **`unified`** (default) — one single serial queue. Image generation and prompt generation never run at the same time (at most 1 concurrent job). Safest against resource collapse.
 - **`separate`** — two independent serial lanes (`comfyui` and `llm`). Each lane runs one job at a time, but the two lanes run in parallel, so an image generation and a prompt generation may run concurrently (up to 2 jobs, one per resource). The ComfyUI prompt-gen workflow used by `/gen_prompt` is submitted to the `comfyui` lane while the LLM job holds the `llm` lane, so no GPU work ever overlaps image generations or races their memory flushes.
 
 Users whose job must wait see their queue position prepended to the progress message, e.g. `⏳ You're #1 in line.` (the first waiting job is #1). When no job is running, no prefix is shown.
+
+Every job has a budget: one that waits longer than `queued_timeout` is dropped (a Discord interaction can no longer be answered after 15 minutes anyway), and one that runs longer than `run_timeout` is cancelled. A cancelled ComfyUI job also calls `/interrupt` on the server so the GPU stops sampling a prompt nobody will see.
+
+Each progress message carries a **Cancel** button. Pressing it drops the job if it is still waiting in line, or cancels the running one (interrupting ComfyUI's sampling). Only the user who started the generation — or an admin — can press it, and it reports "Cancelled" rather than an error.
+
+`/gen_prompt` has the same control: it sits on the "waiting" message, then on the reasoning-effort picker. Cancelling ends the LLM session, drops the picker so a late click cannot start a second one, and unloads the model. When the prompt-composition workflow is running on the ComfyUI lane in `separate` mode, cancelling stops that job too.
 
 ## Storage
 
@@ -298,6 +308,7 @@ comfyuidiscord/
 |-- workflow.py             # Workflow loading, graph->API conversion, spec patching
 |-- llm_client.py           # LLM client: models, load/unload, reasoning-effort probing
 |-- job_queue.py            # Configurable serial job queue (unified/separate lanes)
+|-- db.py                   # Shared SQLite connection helpers
 |-- config.yaml             # Configuration (auto-generated if missing)
 |-- config.example.yaml     # Configuration template
 |-- config_loader.py        # YAML loader + model-default backfill
@@ -310,7 +321,9 @@ comfyuidiscord/
 |-- moderation.db           # Admin/ban database (SQLite, auto-created)
 |-- user_settings.db        # Per-user settings database (SQLite, auto-created)
 |-- diag.py                 # Slash-command sync diagnostic
+|-- tests/                  # Offline pytest suite (converter, spec patchers, queue)
 |-- requirements.txt
+|-- requirements-dev.txt
 |-- start.bat
 |-- LICENSE.txt
 |-- banner.png

@@ -1,10 +1,10 @@
 import asyncio
 import os
 
-from bot import bot, log, config
 import download_erax
+from bot import bot, config, log
+from core import BOT_OWNER_ID, generation_store, moderation, user_settings
 from http_session import close_session
-from core import user_settings, generation_store, moderation, BOT_OWNER_ID
 
 
 def main():

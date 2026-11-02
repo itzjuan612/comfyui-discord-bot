@@ -10,23 +10,24 @@ import random
 import subprocess
 import sys
 
-from PIL import Image
 import discord
 from discord import app_commands
-from discord.ext import commands
-from discord.ui import View, Button, Modal, TextInput, Select
 from discord.enums import TextStyle
+from discord.ext import commands
+from discord.ui import Button, Modal, Select, TextInput, View
+from PIL import Image
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("bot")
 
+import generation_store
+import moderation
+import nsfw_guard
+import user_settings
 from comfyui_client import ComfyUIClient, ComfyUIError
 from config_loader import load_config
 from http_session import get_session
-import user_settings
-import generation_store
-import nsfw_guard
-import moderation
+
 config = load_config()
 # Predefined bot owner (config.yaml: owner.id). The owner and promoted admins
 # get elevated permissions (delete any output, /admin controls).
@@ -420,6 +421,24 @@ async def reply_error(interaction: discord.Interaction, message: str, target=Non
             # Interaction expired or followup failed; log so it's not lost silently.
             logging.getLogger("bot").exception("Could not deliver error reply: %s", message)
             return
+
+
+def attach_cancel_button(message, job, user_id: int) -> None:
+    """Put a Cancel button on a job's progress message.
+
+    The edit runs in its own task so the caller can await the job immediately;
+    failing to attach (deleted message, missing permissions) must never affect
+    the generation itself.
+    """
+    from ui.views import CancelView  # lazy: ui.views imports this module
+
+    async def attach() -> None:
+        try:
+            await message.edit(view=CancelView(job, user_id))
+        except Exception as exc:
+            log.warning("could not attach the cancel button: %s", exc)
+
+    asyncio.create_task(attach())
 
 
 async def ban_guard(interaction: discord.Interaction) -> bool:

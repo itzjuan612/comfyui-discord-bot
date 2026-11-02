@@ -1,29 +1,50 @@
 import asyncio
 import io
+import logging
 import os
 import subprocess
 import sys
-import logging
 
-from PIL import Image
 import discord
-from discord.ui import View, Button, Modal, TextInput, Select
 from discord.enums import TextStyle
+from discord.ui import Button, Modal, Select, TextInput, View
+from PIL import Image
 
 from bot import bot
 from core import (
-    config, comfy, log, generation_store, user_settings, moderation,
-    BOT_OWNER_ID, SAMPLER_NAMES, SCHEDULER_NAMES, UPSCALE_MODELS, UPSCALE_MODEL_LABELS,
-    image_resolution, encode_resolution, uuid_hex,
-    reply_error, ban_guard, check_cooldown, can_manage, is_owner, download_image,
-    nsfw_blocked, deliver_generation,
-    schedule_message_deletion, schedule_original_response_deletion,
+    BOT_OWNER_ID,
+    SAMPLER_NAMES,
+    SCHEDULER_NAMES,
+    UPSCALE_MODEL_LABELS,
+    UPSCALE_MODELS,
     ProgressUpdater,
-    _parse_opt_float, _parse_opt_int, _parse_opt_str,
+    _parse_opt_float,
+    _parse_opt_int,
+    _parse_opt_str,
+    attach_cancel_button,
+    ban_guard,
+    can_manage,
+    check_cooldown,
+    comfy,
+    config,
+    deliver_generation,
+    download_image,
+    encode_resolution,
+    generation_store,
+    image_resolution,
+    is_owner,
+    log,
+    moderation,
+    nsfw_blocked,
+    reply_error,
+    schedule_message_deletion,
+    schedule_original_response_deletion,
+    user_settings,
+    uuid_hex,
 )
+from job_queue import job_error_text, job_queue, log_job_error
+from llm_client import call_llm, llm_model_unload, resolve_reasoning_effort
 from workflow import run_image, run_text_workflow
-from llm_client import call_llm, resolve_reasoning_effort, llm_model_unload
-from job_queue import job_queue
 
 
 class RetryButton(Button):
@@ -69,6 +90,7 @@ class RetryButton(Button):
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"retry_{params['model']}")
         progress.arm(job)
+        attach_cancel_button(progress_msg, fut, interaction.user.id)
         try:
             images, meta = await fut
             progress.done = True
@@ -84,8 +106,8 @@ class RetryButton(Button):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("retry failed")
-            await interaction.edit_original_response(content=f"\u274c Retry failed: {exc}")
+            log_job_error(log, "retry failed", exc)
+            await interaction.edit_original_response(content=job_error_text("\u274c Retry failed:", exc))
             schedule_original_response_deletion(interaction)
 
 
@@ -180,6 +202,7 @@ class UpscaleModelButton(Button):
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"{model}_upscale")
         progress.arm(job)
+        attach_cancel_button(progress_msg, fut, interaction.user.id)
         try:
             images, meta = await fut
             progress.done = True
@@ -203,8 +226,8 @@ class UpscaleModelButton(Button):
             )
         except Exception as exc:
             progress.done = True
-            logging.getLogger("bot").exception("upscale failed")
-            await reply_error(interaction, f"\u274c Upscaling failed: {exc}", target=progress_msg)
+            log_job_error(log, "upscale failed", exc)
+            await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc), target=progress_msg)
 
 
 class UpscaleModelView(View):
@@ -316,6 +339,7 @@ class CheckpointPickerView(View):
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"{self.model_key}_upscale")
         progress.arm(job)
+        attach_cancel_button(progress_msg, fut, interaction.user.id)
         try:
             images, meta = await fut
             progress.done = True
@@ -342,8 +366,8 @@ class CheckpointPickerView(View):
             )
         except Exception as exc:
             progress.done = True
-            logging.getLogger("bot").exception("checkpoint upscale failed")
-            await reply_error(interaction, f"\u274c Upscaling failed: {exc}", target=progress_msg)
+            log_job_error(log, "checkpoint upscale failed", exc)
+            await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc), target=progress_msg)
 
     async def on_timeout(self):
         try:
@@ -568,6 +592,7 @@ class FluxEditModal(Modal):
             job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
             fut = job_queue.submit(job, lane="comfyui", name="flux3_klein_i2i")
             progress.arm(job)
+            attach_cancel_button(progress_msg, fut, interaction.user.id)
             images, meta = await fut
             progress.done = True
             base_lines = [
@@ -585,8 +610,8 @@ class FluxEditModal(Modal):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("Flux Edit failed")
-            await reply_error(interaction, f"\u274c Image edit failed: {exc}", target=progress_msg)
+            log_job_error(log, "Flux Edit failed", exc)
+            await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
 class QwenEditModal(Modal):
     """Modal form for editing a generated image via the single-image
     Qwen Image 2.1 edit workflow.
@@ -736,6 +761,7 @@ class QwenEditModal(Modal):
             job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
             fut = job_queue.submit(job, lane="comfyui", name="qwen_image_i2i")
             progress.arm(job)
+            attach_cancel_button(progress_msg, fut, interaction.user.id)
             images, meta = await fut
             progress.done = True
             display_model = meta.get("ckpt_name") or model
@@ -754,8 +780,8 @@ class QwenEditModal(Modal):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("Qwen Edit failed")
-            await reply_error(interaction, f"\u274c Image edit failed: {exc}", target=progress_msg)
+            log_job_error(log, "Qwen Edit failed", exc)
+            await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
 
 
 class FluxEditButton(Button):
@@ -797,6 +823,49 @@ class QwenEditButton(Button):
         await interaction.response.send_modal(QwenEditModal(default_stealth=default_stealth))
 
 
+class CancelButton(Button):
+    """Stops a queued or running job; shared by CancelView and ThinkingView."""
+
+    def __init__(self, job=None, user_id: int | None = None):
+        super().__init__(label="Cancel", emoji="\u23f9\ufe0f", style=discord.ButtonStyle.danger)
+        self.job = job
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if await ban_guard(interaction):
+            return
+        if self.user_id and self.user_id != interaction.user.id \
+                and not can_manage(interaction.user.id):
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f You can only cancel your own generation.", ephemeral=True
+            )
+            return
+        if self.job is None or self.job.done:
+            await interaction.response.send_message(
+                content="\u2139\ufe0f That generation already finished.", ephemeral=True
+            )
+            return
+        log.info("Cancel clicked for message %s by %s", interaction.message.id, interaction.user.id)
+        self.job.cancel()
+        self.disabled = True
+        self.label = "Cancelling\u2026"
+        await interaction.response.edit_message(view=self.view)
+
+
+class CancelView(View):
+    """One-off view on a generation's progress message.
+
+    Not persistent: the message only lives for one generation, so there is
+    nothing to cancel after a restart. ``user_id`` restricts the button to the
+    user who started the generation (plus admins), since progress messages are
+    public unless the command asked for an ephemeral reply.
+    """
+
+    def __init__(self, job, user_id: int | None = None):
+        super().__init__(timeout=3600)
+        self.add_item(CancelButton(job, user_id))
+
+
 class GenerationView(View):
     """Persistent view: buttons work indefinitely and survive bot restarts.
 
@@ -834,7 +903,7 @@ class ThinkingView(View):
     def __init__(self, chosen_model: str, supported: list[str], prompt: str,
                  megapixels: int, aspect_ratio: str,
                  max_tokens: int | None, temperature: float | None, llm_cfg: dict,
-                 completion, state: dict):
+                 completion, state: dict, job=None, user_id: int | None = None):
         super().__init__(timeout=30)
         self.chosen_model = chosen_model
         self.prompt = prompt
@@ -845,6 +914,7 @@ class ThinkingView(View):
         self.llm_cfg = llm_cfg
         self.completion = completion
         self.state = state
+        self.job = job
         options = [discord.SelectOption(label="API default", value="api_default")]
         options += [discord.SelectOption(label=e, value=e) for e in supported]
         self.add_item(ThinkingSelect(
@@ -853,8 +923,19 @@ class ThinkingView(View):
             min_values=1, max_values=1,
             custom_id="gen_prompt_thinking",
         ))
+        # The picker is the only UI while the session waits for a choice, so
+        # it carries the Cancel button too.
+        if job is not None:
+            self.add_item(CancelButton(job, user_id))
 
     async def handle_select(self, interaction: discord.Interaction, value: str):
+        # The session may already be gone (cancelled, failed, or timed out):
+        # a late click must not start a second, orphaned generation.
+        if self.job is not None and self.job.done:
+            await interaction.response.send_message(
+                content="\u2139\ufe0f This prompt generation already ended.", ephemeral=True
+            )
+            return
         # Record the user's choice and release the session job, which performs
         # the actual generation and unload. Respond so Discord acknowledges
         # the click. The follow-up "Generating prompt\u2026" message is stored

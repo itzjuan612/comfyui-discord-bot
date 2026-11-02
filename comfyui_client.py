@@ -316,6 +316,23 @@ class ComfyUIClient:
             raise ComfyUIError("Could not free memory (connection error)")
         log.info("ComfyUI memory freed")
 
+    async def interrupt(self) -> None:
+        """Stop the prompt ComfyUI is currently sampling.
+
+        The bot runs ComfyUI work strictly one job at a time and only while
+        holding the queue lane, so the running prompt is always the one being
+        cancelled or timed out. Interrupting leaves it out of /history, which
+        is fine: the cancelled caller gets ``JobCancelled`` instead of a result.
+        """
+        session = get_session()
+        try:
+            async with session.post(f"{self.base_url}/interrupt", json={}) as resp:
+                if resp.status >= 400:
+                    raise ComfyUIError(f"Could not interrupt (HTTP {resp.status})")
+        except aiohttp.ClientError:
+            raise ComfyUIError("Could not interrupt (connection error)")
+        log.info("ComfyUI prompt interrupted")
+
     async def wait_for_output_text(self, prompt_id: str, timeout: float = 300.0, target_node: str | None = None) -> str:
         """Poll /history until the prompt finishes; returns the text output.
 

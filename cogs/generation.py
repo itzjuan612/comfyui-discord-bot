@@ -1,27 +1,46 @@
 import io
-
-from PIL import Image
-import discord
 import logging
 from typing import Optional
+
+import discord
 from discord import app_commands
 from discord.ext import commands
+from PIL import Image
 
 from core import (
-    config, comfy, log, user_settings,
-    image_resolution, encode_resolution, uuid_hex,
-    reply_error, ban_guard, check_cooldown, nsfw_blocked, can_manage, download_image,
-    deliver_generation,
-    schedule_message_deletion,
-    ProgressUpdater, normalize_aspect_ratio,
-    UPSCALE_CHOICES, ASPECT_RATIO_CHOICES, QUALITY_CHOICES,
-    SAMPLER_CHOICES, SCHEDULER_CHOICES,
+    ASPECT_RATIO_CHOICES,
+    QUALITY_CHOICES,
+    SAMPLER_CHOICES,
+    SCHEDULER_CHOICES,
+    UPSCALE_CHOICES,
     ComfyUIError,
+    ProgressUpdater,
+    attach_cancel_button,
+    ban_guard,
+    can_manage,
+    check_cooldown,
+    comfy,
+    config,
+    deliver_generation,
+    download_image,
+    encode_resolution,
+    image_resolution,
+    log,
+    normalize_aspect_ratio,
+    nsfw_blocked,
+    reply_error,
+    schedule_message_deletion,
+    user_settings,
+    uuid_hex,
 )
-from ui.autocomplete import _sdxl_model_autocomplete, _sdxl_lora_autocomplete, _zimage_model_autocomplete
-from workflow import run_image
+from job_queue import job_error_text, job_queue, log_job_error
+from ui.autocomplete import (
+    _sdxl_lora_autocomplete,
+    _sdxl_model_autocomplete,
+    _zimage_model_autocomplete,
+)
 from ui.views import CheckpointPickerView
-from job_queue import job_queue
+from workflow import run_image
 
 
 async def run_t2i_generation(interaction: discord.Interaction, model: str,
@@ -48,6 +67,7 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"{model}_t2i")
         progress.arm(job)
+        attach_cancel_button(progress_msg, fut, interaction.user.id)
         images, meta = await fut
         progress.done = True
         log.info("%s: got %d images", model, len(images))
@@ -101,8 +121,8 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
         )
     except Exception as exc:
         progress.done = True
-        log.exception("generation failed")
-        await reply_error(interaction, f"\u274c Generation failed: {exc}")
+        log_job_error(log, "generation failed", exc)
+        await reply_error(interaction, job_error_text("\u274c Generation failed:", exc))
 
 
 
@@ -682,6 +702,7 @@ class GenerationCog(commands.Cog):
             )
             fut = job_queue.submit(job, lane="comfyui", name=f"{model}_upscale")
             progress.arm(job)
+            attach_cancel_button(progress_msg, fut, interaction.user.id)
             images, meta = await fut
             progress.done = True
             base_desc = (
@@ -705,8 +726,8 @@ class GenerationCog(commands.Cog):
                 progress.done = True
             except UnboundLocalError:
                 pass
-            logging.getLogger("bot").exception("upscale failed")
-            await reply_error(interaction, f"\u274c Upscaling failed: {exc}")
+            log_job_error(log, "upscale failed", exc)
+            await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc))
 
 
     @app_commands.command(name="flux_edit", description="Edit one image (or combine two) into a new image using Flux 3 Klein")
@@ -815,6 +836,7 @@ class GenerationCog(commands.Cog):
             job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
             fut = job_queue.submit(job, lane="comfyui", name="flux3_klein_i2i")
             progress.arm(job)
+            attach_cancel_button(progress_msg, fut, interaction.user.id)
             images, meta = await fut
             progress.done = True
             display_model = meta.get("ckpt_name") or model
@@ -833,8 +855,8 @@ class GenerationCog(commands.Cog):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("flux_edit failed")
-            await reply_error(interaction, f"\u274c Image-to-image failed: {exc}", target=progress_msg)
+            log_job_error(log, "flux_edit failed", exc)
+            await reply_error(interaction, job_error_text("\u274c Image-to-image failed:", exc), target=progress_msg)
 
     @app_commands.command(name="qwen_edit", description="Edit one image (or combine two) into a new image using Qwen Image 2.1")
     @app_commands.choices(sampler=SAMPLER_CHOICES)
@@ -943,6 +965,7 @@ class GenerationCog(commands.Cog):
             job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
             fut = job_queue.submit(job, lane="comfyui", name="qwen_image_i2i")
             progress.arm(job)
+            attach_cancel_button(progress_msg, fut, interaction.user.id)
             images, meta = await fut
             progress.done = True
             display_model = meta.get("ckpt_name") or model
@@ -961,8 +984,8 @@ class GenerationCog(commands.Cog):
             )
         except Exception as exc:
             progress.done = True
-            log.exception("qwen_edit failed")
-            await reply_error(interaction, f"\u274c Image edit failed: {exc}", target=progress_msg)
+            log_job_error(log, "qwen_edit failed", exc)
+            await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
     @app_commands.command(name="flush", description="Unload all models and execution cache from ComfyUI")
     async def flush(self, interaction: discord.Interaction):
         if not can_manage(interaction.user.id):

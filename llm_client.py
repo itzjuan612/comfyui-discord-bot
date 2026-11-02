@@ -2,7 +2,7 @@ import asyncio
 
 import aiohttp
 
-from core import log, config, ComfyUIError
+from core import ComfyUIError, config, log
 from http_session import get_session
 
 

@@ -1,40 +1,18 @@
-import os
-import sqlite3
-import threading
 import logging
-from contextlib import contextmanager
+import os
+
+import db
 
 log = logging.getLogger("moderation")
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "moderation.db")
 
-
-_conn: sqlite3.Connection | None = None
-_conn_lock = threading.Lock()
+_db = db.Database(DB_PATH)
 
 
-def _connect() -> sqlite3.Connection:
-    """Return the persistent connection, creating it once (thread-safe)."""
-    global _conn
-    if _conn is None:
-        with _conn_lock:
-            if _conn is None:
-                conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-                conn.execute("PRAGMA journal_mode=WAL")
-                _conn = conn
-    return _conn
-
-
-@contextmanager
 def _locked_conn():
-    """Yield the persistent connection while holding the module lock.
-
-    Serializes all access on the single shared connection so sqlite3 is
-    thread-safe and per-query connect/close overhead is eliminated.
-    """
-    conn = _connect()
-    with _conn_lock:
-        yield conn
+    """Yield the shared connection while holding the database lock."""
+    return _db.locked()
 
 
 def init_db() -> None:
@@ -60,9 +38,9 @@ def _has(table: str, discord_id: int) -> bool:
 def _set(table: str, discord_id: int, present: bool) -> None:
     with _locked_conn() as conn:
         if present:
-            conn.execute("INSERT OR IGNORE INTO {} (discord_id) VALUES (?)".format(table), (discord_id,))
+            conn.execute(f"INSERT OR IGNORE INTO {table} (discord_id) VALUES (?)", (discord_id,))
         else:
-            conn.execute("DELETE FROM {} WHERE discord_id = ?".format(table), (discord_id,))
+            conn.execute(f"DELETE FROM {table} WHERE discord_id = ?", (discord_id,))
         conn.commit()
 
 

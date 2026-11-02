@@ -13,6 +13,13 @@ comfyui:
 #               at a time, but the two can run concurrently (up to 2 jobs).
 queueing:
   mode: unified
+  # Seconds a job may wait in line before it is dropped with a
+  # "timed out in queue" error. 0 or absent disables the limit.
+  queued_timeout: 900
+  # Seconds a running job may take before it is cancelled and ComfyUI is
+  # interrupted. 0 or absent means no limit (ComfyUI's own poll timeout
+  # still applies).
+  run_timeout: 0
 
 # NSFW guardrail: refuse NSFW prompts unless run in a Discord-marked NSFW channel.
 nsfw:
@@ -114,6 +121,8 @@ models:
       file: workflows/t2i/Ideogram_4_generator.json
       default_model: "ideogram4_int8_convrot.safetensors"
       model_node: "98:23"
+      # model_key names the model input when the loader class is one the bot
+      # does not know; the class selects the input (ckpt_name, unet_name, ...).
       # The workflow has a second UNet loader for the unconditional branch.
       default_model_unconditional: "ideogram4_unconditional_int8_convrot.safetensors"
       model_node_unconditional: "98:154"
