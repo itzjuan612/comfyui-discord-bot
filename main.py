@@ -3,7 +3,7 @@ import os
 
 import download_erax
 from bot import bot, config, log
-from core import BOT_OWNER_ID, generation_store, moderation, user_settings
+from core import BOT_OWNER_ID, comfy, generation_store, moderation, user_settings
 from http_session import close_session
 
 
@@ -43,12 +43,16 @@ def main():
         bot.run(token)
     finally:
         # bot.run() swallows KeyboardInterrupt and closes its loop before
-        # returning, so on_close() may not have run before exit. Close any
-        # leftover aiohttp session here to avoid "Unclosed client session" /
-        # "Unclosed connector" warnings at interpreter shutdown. asyncio.run
-        # creates a short-lived loop just for this cleanup; close_session()
-        # tolerates cross-loop teardown and marks the session closed even if
-        # connector shutdown raises.
+        # returning, so on_close() (and with it the job queue) is torn down
+        # before it can stop ComfyUI. Interrupt whatever the server is still
+        # sampling here, on a short-lived loop, so Ctrl+C stops the GPU instead
+        # of leaving it to finish an image nobody will see.
+        asyncio.run(comfy.interrupt_on_shutdown())
+        # Close any leftover aiohttp session here to avoid "Unclosed client
+        # session" / "Unclosed connector" warnings at interpreter shutdown.
+        # asyncio.run creates a short-lived loop just for this cleanup;
+        # close_session() tolerates cross-loop teardown and marks the session
+        # closed even if connector shutdown raises.
         asyncio.run(close_session())
 
 

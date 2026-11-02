@@ -305,14 +305,16 @@ class JobQueue:
             self._finish(job, exc=JobCancelled("Bot is shutting down"))
         if self._pending == 0 and self._active == 0:
             self._drained.set()
+        worker = self._worker_task
         if self._current is not None:
             self._current.cancel()
-        try:
-            await asyncio.wait_for(self.wait_drained(), timeout=timeout)
-        except asyncio.TimeoutError:
-            log.warning("queue did not drain within %ss; stopping the worker", timeout)
-        if self._worker_task is not None and not self._worker_task.done():
-            self._worker_task.cancel()
+        if worker is not None and not worker.done():
+            try:
+                await asyncio.wait_for(self.wait_drained(), timeout=timeout)
+            except asyncio.TimeoutError:
+                log.warning("queue did not drain within %ss; stopping the worker", timeout)
+            if not worker.done():
+                worker.cancel()
 
     def stats(self) -> tuple[int, int]:
         """Return ``(active, pending)`` counts."""

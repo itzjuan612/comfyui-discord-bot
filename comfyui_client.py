@@ -100,6 +100,9 @@ class ComfyUIClient:
     # How long a model listing stays fresh before re-querying ComfyUI.
     MODEL_LIST_CACHE_TTL = 60.0
 
+    # Budget for the shutdown interrupt, so a dead ComfyUI cannot delay exit.
+    SHUTDOWN_INTERRUPT_TIMEOUT = 3.0
+
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
         # folder -> (names, monotonic fetch time) for /models/{folder} listings.
@@ -332,6 +335,27 @@ class ComfyUIClient:
         except aiohttp.ClientError:
             raise ComfyUIError("Could not interrupt (connection error)")
         log.info("ComfyUI prompt interrupted")
+
+    async def interrupt_on_shutdown(self) -> None:
+        """Stop whatever ComfyUI is sampling, for process teardown.
+
+        ``main`` runs this after ``bot.run()`` has returned: the bot's event
+        loop and its shared aiohttp session are already gone, so it opens a
+        throwaway session with a short timeout instead. On an idle server the
+        call is a no-op.
+
+        Nothing here may raise: it runs while the process is exiting.
+        """
+        try:
+            timeout = aiohttp.ClientTimeout(total=self.SHUTDOWN_INTERRUPT_TIMEOUT)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(f"{self.base_url}/interrupt", json={}) as resp:
+                    if resp.status >= 400:
+                        log.warning("shutdown interrupt returned HTTP %s", resp.status)
+                    else:
+                        log.info("ComfyUI prompt interrupted on shutdown")
+        except Exception as exc:
+            log.warning("could not interrupt ComfyUI on shutdown: %s", exc)
 
     async def wait_for_output_text(self, prompt_id: str, timeout: float = 300.0, target_node: str | None = None) -> str:
         """Poll /history until the prompt finishes; returns the text output.
