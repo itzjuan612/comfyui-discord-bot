@@ -57,11 +57,11 @@ async def _sdxl_lora_autocomplete(interaction: discord.Interaction, current_inpu
         log.warning("Could not fetch LoRA list for autocomplete: %s", exc)
         return []
     if current_input:
-        matches = [l for l in loras if current_input.lower() in l.lower()]
+        matches = [lora for lora in loras if current_input.lower() in lora.lower()]
     else:
         matches = loras
     # Discord allows at most 25 autocomplete choices.
-    return [app_commands.Choice(name=l, value=l) for l in matches[:25]]
+    return [app_commands.Choice(name=lora, value=lora) for lora in matches[:25]]
 
 
 async def _zimage_model_autocomplete(interaction: discord.Interaction, current_input: str):

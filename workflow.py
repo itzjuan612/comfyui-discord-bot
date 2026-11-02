@@ -2,8 +2,15 @@ import json
 import os
 import random
 
-from core import config, comfy, log, normalize_aspect_ratio, last_workflow_by_model, last_ckpt_by_model, ComfyUIError, user_settings
-
+from core import (
+    ComfyUIError,
+    comfy,
+    last_ckpt_by_model,
+    last_workflow_by_model,
+    log,
+    normalize_aspect_ratio,
+    user_settings,
+)
 
 # Values that disable the optional LoRA loader. Sentinels usable in the
 # `lora` command parameter to override a config default for one run.
@@ -28,63 +35,81 @@ def _resolve_lora(spec: dict, kwargs: dict) -> str:
 
 
 def load_workflow(file_path: str) -> dict:
-    import json
-
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_path)
     with open(path) as f:
         return json.load(f)
 
 
+# Node classes that only carry documentation in the graph editor; ComfyUI
+# rejects them in API format.
+_NOTE_NODES = ("Note", "MarkdownNote")
+
+
+def _link_map(graph: dict) -> dict:
+    """Map link id -> (origin node id, origin slot)."""
+    return {link[0]: (link[1], link[2]) for link in graph.get("links", [])}
+
+
+def _node_inputs(node: dict, links: dict) -> dict:
+    """Resolve one graph node's inputs: widget values plus incoming links."""
+    named = node.get("widgets_values_named") or {}
+    positional = node.get("widgets_values") or []
+    pos_idx = 0
+    inputs = {}
+    for inp in node.get("inputs", []):
+        name = inp["name"]
+        if name in named:
+            inputs[name] = named[name]
+        elif "widget" in inp:
+            # Widget values without names are stored positionally.
+            inputs[name] = positional[pos_idx]
+            pos_idx += 1
+        if inp.get("link") is not None:
+            src, slot = links[inp["link"]]
+            inputs[name] = [str(src), slot]
+    return inputs
+
+
 def graph_to_api(graph: dict) -> dict:
     """Convert a ComfyUI graph-format workflow into API/prompt format."""
-    links = {l[0]: (l[1], l[2]) for l in graph.get("links", [])}
+    links = _link_map(graph)
     api = {}
     for node in graph["nodes"]:
-        ctype = node["type"]
-        if ctype in ("Note", "MarkdownNote"):
+        if node["type"] in _NOTE_NODES:
             continue
-        nid = str(node["id"])
-        inputs = {}
-        named = node.get("widgets_values_named") or {}
-        positional = node.get("widgets_values") or []
-        pos_idx = 0
-        for inp in node.get("inputs", []):
-            name = inp["name"]
-            if name in named:
-                inputs[name] = named[name]
-            elif "widget" in inp:
-                inputs[name] = positional[pos_idx]
-                pos_idx += 1
-            if inp.get("link") is not None:
-                src, slot = links[inp["link"]]
-                inputs[name] = [str(src), slot]
-        api[nid] = {"class_type": ctype, "inputs": inputs}
+        api[str(node["id"])] = {
+            "class_type": node["type"],
+            "inputs": _node_inputs(node, links),
+        }
     return api
 
 
-def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
-    """Patch node inputs in the workflow based on config node IDs."""
+# Model-loader node classes and the input that names the model file.
+_MODEL_LOADER_KEYS = {
+    "CheckpointLoaderSimple": "ckpt_name",
+    "UNETLoader": "unet_name",
+    "SeedVR2LoadDiTModel": "model",
+    "FlashVSRNode": "model",
+}
 
-    def set_node(node_id, key, value):
-        if node_id is not None:
-            workflow[str(node_id)]["inputs"][key] = value
 
+def _set_node(workflow: dict, node_id, key: str, value) -> None:
+    """Write ``value`` into input ``key`` of node ``node_id`` (no-op if None)."""
+    if node_id is not None:
+        workflow[str(node_id)]["inputs"][key] = value
+
+
+def _apply_model(workflow: dict, spec: dict, kwargs: dict) -> None:
+    """Point the model loader(s) at the requested file."""
     ckpt_name = kwargs.get("ckpt_name")
     if ckpt_name is not None:
-        # Point the model loader at the requested file. Works with SDXL
-        # checkpoints (models/checkpoints) and with UNet/DiT model files.
-        # Node type -> input key used to name the model file.
-        loader_keys = {
-            "CheckpointLoaderSimple": "ckpt_name",
-            "UNETLoader": "unet_name",
-            "SeedVR2LoadDiTModel": "model",
-            "FlashVSRNode": "model",
-        }
-        # Ideogram has two UNet loaders (conditional + unconditional); the
-        # spec's model_node pins which one a default_model refers to.
+        # Works with SDXL checkpoints (models/checkpoints) and with UNet/DiT
+        # model files. Ideogram has two UNet loaders (conditional +
+        # unconditional); the spec's model_node pins which one a
+        # default_model refers to.
         model_node = spec.get("model_node")
         for nid, node in workflow.items():
-            key = loader_keys.get(node.get("class_type"))
+            key = _MODEL_LOADER_KEYS.get(node.get("class_type"))
             if key is None:
                 continue
             if model_node is not None and str(nid) != str(model_node):
@@ -103,32 +128,30 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         if node is not None and node.get("class_type") == "UNETLoader":
             node["inputs"]["unet_name"] = default_model_unconditional
 
-    # Text-encoder default (e.g. the Qwen 3 VL quant shared by Ideogram 4 and
-    # Qwen Image 2.1). An explicit ``text_encoder`` kwarg wins; otherwise the
-    # spec's default is applied so the workflow never depends on whatever
-    # filename was saved in the JSON. ``enhancer_text_encoder_node`` (when
-    # present) points at a second CLIPLoader and receives the same file.
-    if spec.get("text_encoder_node") is not None or spec.get("enhancer_text_encoder_node") is not None:
-        effective_encoder = kwargs.get("text_encoder") or spec.get("default_text_encoder")
-        if effective_encoder is not None:
-            for encoder_key in ("text_encoder_node", "enhancer_text_encoder_node"):
-                node_id = spec.get(encoder_key)
-                if node_id is None:
-                    continue
-                node = workflow.get(str(node_id))
-                if node is not None and node.get("class_type") == "CLIPLoader":
-                    node["inputs"]["clip_name"] = effective_encoder
 
+def _apply_text_encoder(workflow: dict, spec: dict, kwargs: dict) -> None:
+    """Point the CLIPLoader(s) at the effective text-encoder file."""
+    if spec.get("text_encoder_node") is None and spec.get("enhancer_text_encoder_node") is None:
+        return
+    # An explicit ``text_encoder`` kwarg wins; otherwise the spec's default is
+    # applied so the workflow never depends on whatever filename was saved in
+    # the JSON. ``enhancer_text_encoder_node`` (when present) points at a
+    # second CLIPLoader and receives the same file.
+    effective_encoder = kwargs.get("text_encoder") or spec.get("default_text_encoder")
+    if effective_encoder is None:
+        return
+    for encoder_key in ("text_encoder_node", "enhancer_text_encoder_node"):
+        node_id = spec.get(encoder_key)
+        if node_id is None:
+            continue
+        node = workflow.get(str(node_id))
+        if node is not None and node.get("class_type") == "CLIPLoader":
+            node["inputs"]["clip_name"] = effective_encoder
+
+
+def _apply_prompt(workflow: dict, spec: dict, kwargs: dict) -> None:
+    """Write the prompt, its translation switch, the enhancer and the negative."""
     prompt = kwargs.get("prompt")
-    negative = kwargs.get("negative")
-    seed = kwargs.get("seed")
-    steps = kwargs.get("steps")
-    strength = kwargs.get("strength")
-    image_filename = kwargs.get("image_filename")
-    width = kwargs.get("width")
-    height = kwargs.get("height")
-    cfg = kwargs.get("cfg")
-
     if prompt is not None:
         input_node = spec.get("prompt_input_node")
         if input_node is not None:
@@ -136,17 +159,19 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
             # Translate node feeding the optional prompt enhancer); the
             # encode node's prompt input is a link into that chain, so
             # writing to prompt_node would clobber the link and bypass it.
-            set_node(input_node, spec.get("prompt_input_key", "text"), prompt)
+            _set_node(workflow, input_node, spec.get("prompt_input_key", "text"), prompt)
         else:
-            set_node(spec.get("prompt_node"), spec.get("prompt_key", "text"), prompt)
+            _set_node(workflow, spec.get("prompt_node"), spec.get("prompt_key", "text"), prompt)
+
     # Qwen Image 2.1 T2I: optional prompt translation. The GoogleTranslateTextNode
     # input is inverted (manual_translate: True = pass through untranslated,
     # False = translate to English). Translation is off unless explicitly
     # enabled: only translate=True translates; None/False pass the prompt
     # through untranslated. The raw workflow ships manual_translate: false
     # (translate on), so the input is always rewritten when the node exists.
-    set_node(spec.get("translate_node"), spec.get("translate_key", "manual_translate"),
-             not bool(kwargs.get("translate")))
+    _set_node(workflow, spec.get("translate_node"), spec.get("translate_key", "manual_translate"),
+              not bool(kwargs.get("translate")))
+
     # Qwen Image 2.1 T2I: optional prompt enhancement chain between the
     # translate node and the encoder (StringConcatenate -> TextGenerate ->
     # showAnything). Enhancement is off unless explicitly enabled: only
@@ -169,16 +194,39 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     enhance_node = spec.get("enhance_node")
     if enhance_node is not None:
         workflow[str(enhance_node)]["inputs"][spec.get("enhance_key", "switch")] = bool(enhance)
+
+    negative = kwargs.get("negative")
     if negative is not None:
-        set_node(spec.get("negative_node"), spec.get("negative_key", "text"), negative)
+        _set_node(workflow, spec.get("negative_node"), spec.get("negative_key", "text"), negative)
+
+
+def _apply_sampling(workflow: dict, spec: dict, kwargs: dict) -> None:
+    """Write the sampler's inputs and the img2img denoise strength."""
+    seed = kwargs.get("seed")
     if seed is not None:
-        set_node(spec.get("seed_node"), spec.get("seed_key", "seed"), int(seed))
+        _set_node(workflow, spec.get("seed_node"), spec.get("seed_key", "seed"), int(seed))
+    steps = kwargs.get("steps")
     if steps is not None:
-        set_node(spec.get("steps_node"), "steps", int(steps))
+        _set_node(workflow, spec.get("steps_node"), "steps", int(steps))
+    strength = kwargs.get("strength")
     if strength is not None:
-        set_node(spec.get("denoise_node"), "denoise", float(strength))
+        _set_node(workflow, spec.get("denoise_node"), "denoise", float(strength))
+    cfg = kwargs.get("cfg")
+    if cfg is not None:
+        _set_node(workflow, spec.get("cfg_node"), "cfg", float(cfg))
+    sampler = kwargs.get("sampler")
+    if sampler is not None:
+        _set_node(workflow, spec.get("sampler_node"), "sampler_name", sampler)
+    scheduler = kwargs.get("scheduler")
+    if scheduler is not None:
+        _set_node(workflow, spec.get("sampler_node"), "scheduler", scheduler)
+
+
+def _apply_images(workflow: dict, spec: dict, kwargs: dict) -> None:
+    """Write the LoadImage filenames, dropping the second loader when unused."""
+    image_filename = kwargs.get("image_filename")
     if image_filename is not None:
-        set_node(spec.get("image_node"), "image", image_filename)
+        _set_node(workflow, spec.get("image_node"), "image", image_filename)
     image_files = kwargs.get("image_files")
     if image_files:
         image_nodes = spec.get("image_nodes")
@@ -190,44 +238,45 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
     # referenced it is dropped so ComfyUI never validates an empty LoadImage
     # (qwen: image2_key on prompt_node; flux3: image2_refs auto-grow inputs).
     image2_node = spec.get("image2_node")
-    if image2_node is not None:
-        image2_filename = kwargs.get("image2_filename")
-        if image2_filename:
-            workflow[str(image2_node)]["inputs"]["image"] = image2_filename
-        else:
-            workflow.pop(str(image2_node), None)
-            for ref_node, ref_key in spec.get("image2_refs") or []:
-                node = workflow.get(str(ref_node))
-                if node is not None:
-                    node["inputs"].pop(ref_key, None)
-            encode_node = workflow.get(str(spec.get("prompt_node")))
-            if encode_node is not None:
-                encode_node["inputs"].pop(spec.get("image2_key", "images.image_2"), None)
-    if width is not None and height is not None:
-        latent_id = spec.get("latent_node")
-        if latent_id is not None:
-            workflow[str(latent_id)]["inputs"]["width"] = int(width)
-            workflow[str(latent_id)]["inputs"]["height"] = int(height)
-    if cfg is not None:
-        set_node(spec.get("cfg_node"), "cfg", float(cfg))
-    sampler = kwargs.get("sampler")
-    if sampler is not None:
-        set_node(spec.get("sampler_node"), "sampler_name", sampler)
-    scheduler = kwargs.get("scheduler")
-    if scheduler is not None:
-        set_node(spec.get("sampler_node"), "scheduler", scheduler)
+    if image2_node is None:
+        return
+    image2_filename = kwargs.get("image2_filename")
+    if image2_filename:
+        workflow[str(image2_node)]["inputs"]["image"] = image2_filename
+        return
+    workflow.pop(str(image2_node), None)
+    for ref_node, ref_key in spec.get("image2_refs") or []:
+        node = workflow.get(str(ref_node))
+        if node is not None:
+            node["inputs"].pop(ref_key, None)
+    encode_node = workflow.get(str(spec.get("prompt_node")))
+    if encode_node is not None:
+        encode_node["inputs"].pop(spec.get("image2_key", "images.image_2"), None)
 
-    # Batch size: applied to the empty latent node when provided.
+
+def _apply_latent(workflow: dict, spec: dict, kwargs: dict) -> None:
+    """Set the empty-latent resolution and batch size."""
+    latent_id = spec.get("latent_node")
+    if latent_id is None:
+        return
+    width = kwargs.get("width")
+    height = kwargs.get("height")
+    if width is not None and height is not None:
+        workflow[str(latent_id)]["inputs"]["width"] = int(width)
+        workflow[str(latent_id)]["inputs"]["height"] = int(height)
     batch_size = kwargs.get("batch_size")
     if batch_size is not None:
-        latent_id = spec.get("latent_node")
-        if latent_id is not None:
-            workflow[str(latent_id)]["inputs"]["batch_size"] = int(batch_size)
+        workflow[str(latent_id)]["inputs"]["batch_size"] = int(batch_size)
 
-    # LoRA support: an empty lora name disables the loader node. Since
-    # ComfyUI validates lora_name against the available-loras list ("" is
-    # not a valid value), disabled loaders are removed from the graph and
-    # the model/clip chain is rewired around them.
+
+def _apply_lora(workflow: dict, spec: dict, kwargs: dict) -> None:
+    """Fill the LoRA loaders and rewire the model/clip chain around them.
+
+    An empty lora name disables the loader node. Since ComfyUI validates
+    lora_name against the available-loras list ("" is not a valid value),
+    disabled loaders are removed from the graph and the model/clip chain is
+    rewired around them.
+    """
     lora1 = kwargs.get("lora1")
     lora2 = kwargs.get("lora2")
     lora = _resolve_lora(spec, kwargs)
@@ -317,7 +366,9 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
             for nid in (spec.get("prompt_node"), spec.get("negative_node")):
                 workflow[str(nid)]["inputs"]["clip"] = [clip_src, clip_out]
 
-    # Ideogram: resolution selector (megapixels + aspect ratio) and quality preset.
+
+def _apply_resolution(workflow: dict, spec: dict, kwargs: dict) -> None:
+    """Ideogram: resolution selector (megapixels + aspect ratio) and quality preset."""
     megapixels = kwargs.get("megapixels")
     aspect_ratio = kwargs.get("aspect_ratio")
     quality = kwargs.get("quality")
@@ -334,40 +385,57 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         if combo:
             workflow[str(combo[0])]["inputs"][combo[1]] = combo[2]
     if aspect_ratio is not None and resolution_node is not None:
-        aspect_ratio = normalize_aspect_ratio(aspect_ratio)
-        workflow[str(resolution_node)]["inputs"][spec.get("aspect_ratio_key", "aspect_ratio")] = aspect_ratio
+        workflow[str(resolution_node)]["inputs"][spec.get("aspect_ratio_key", "aspect_ratio")] = \
+            normalize_aspect_ratio(aspect_ratio)
     if quality is not None:
-        set_node(spec.get("quality_node"), spec.get("quality_key", "choice"), quality)
+        _set_node(workflow, spec.get("quality_node"), spec.get("quality_key", "choice"), quality)
 
+
+def _apply_scale(workflow: dict, spec: dict, kwargs: dict) -> None:
+    """Set the upscaler's factor, or its absolute pixel target, when given."""
     scale = kwargs.get("scale")
-    input_longest_side = kwargs.get("input_longest_side")
-    if scale is not None:
-        scale_id = spec.get("scale_node")
-        if scale_id is not None:
-            mode = spec.get("scale_mode", "factor")
-            if mode == "resolution":
-                # Target absolute pixels = longest input side * scale.
-                if input_longest_side is None:
-                    raise ValueError("Scale requires the input image dimensions.")
-                value = int(input_longest_side * float(scale))
-                keys = spec.get("scale_keys") or [spec.get("scale_key", "resolution")]
-                for key in keys:
-                    workflow[str(scale_id)]["inputs"][key] = value
-            else:
-                # Plain multiplicative scale factor (e.g. 2x, 3x).
-                scale_id_str = str(scale_id)
-                factor = float(scale)
-                value = int(factor) if factor.is_integer() else factor
-                workflow[scale_id_str]["inputs"][spec.get("scale_key", "scale_by")] = value
+    scale_id = spec.get("scale_node")
+    if scale is None or scale_id is None:
+        return
+    if spec.get("scale_mode", "factor") == "resolution":
+        # Target absolute pixels = longest input side * scale.
+        input_longest_side = kwargs.get("input_longest_side")
+        if input_longest_side is None:
+            raise ValueError("Scale requires the input image dimensions.")
+        value = int(input_longest_side * float(scale))
+        for key in spec.get("scale_keys") or [spec.get("scale_key", "resolution")]:
+            workflow[str(scale_id)]["inputs"][key] = value
+    else:
+        # Plain multiplicative scale factor (e.g. 2x, 3x).
+        factor = float(scale)
+        value = int(factor) if factor.is_integer() else factor
+        workflow[str(scale_id)]["inputs"][spec.get("scale_key", "scale_by")] = value
 
-    # Qwen Image 2.1 I2I: encode-node resolution budget (output area ~= R^2
-    # pixels). The bot computes R from the input image so the output follows
-    # the input size on the node's 32-px grid; without the kwarg the
-    # workflow's fixed default (1376 ~= 1.89 MP) is kept.
+
+def _apply_encode_resolution(workflow: dict, spec: dict, kwargs: dict) -> None:
+    """Qwen Image 2.1 I2I: encode-node resolution budget (output area ~= R^2
+    pixels). The bot computes R from the input image so the output follows
+    the input size on the node's 32-px grid; without the kwarg the
+    workflow's fixed default (1376 ~= 1.89 MP) is kept.
+    """
     encode_resolution = kwargs.get("resolution")
     encode_node = spec.get("encode_resolution_node")
     if encode_resolution is not None and encode_node is not None:
         workflow[str(encode_node)]["inputs"]["resolution"] = int(encode_resolution)
+
+
+def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
+    """Patch node inputs in the workflow based on config node IDs."""
+    _apply_model(workflow, spec, kwargs)
+    _apply_text_encoder(workflow, spec, kwargs)
+    _apply_prompt(workflow, spec, kwargs)
+    _apply_sampling(workflow, spec, kwargs)
+    _apply_images(workflow, spec, kwargs)
+    _apply_latent(workflow, spec, kwargs)
+    _apply_lora(workflow, spec, kwargs)
+    _apply_resolution(workflow, spec, kwargs)
+    _apply_scale(workflow, spec, kwargs)
+    _apply_encode_resolution(workflow, spec, kwargs)
 
 
 # Runtime GPU-safety bounds. Command decorators use app_commands.Range for
@@ -423,12 +491,10 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
         default_ckpt = spec.get("default_model")
         if default_ckpt is None:
             for node in api_workflow.values():
-                if node.get("class_type") in ("CheckpointLoaderSimple", "UNETLoader", "SeedVR2LoadDiTModel", "FlashVSRNode"):
-                    key = {"CheckpointLoaderSimple": "ckpt_name", "UNETLoader": "unet_name",
-                           "SeedVR2LoadDiTModel": "model", "FlashVSRNode": "model"}.get(node["class_type"])
-                    if key and node["inputs"].get(key):
-                        default_ckpt = node["inputs"][key]
-                        break
+                key = _MODEL_LOADER_KEYS.get(node.get("class_type"))
+                if key and node["inputs"].get(key):
+                    default_ckpt = node["inputs"][key]
+                    break
         if default_ckpt is not None:
             if model_key == "sdxl":
                 try:
@@ -506,7 +572,7 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
             prompt_id, client_id, on_progress=on_progress,
             progress_node_id=progress_node_id, progress_total=progress_total,
         )
-    except ComfyUIError as exc:
+    except ComfyUIError:
         # If the checkpoint has no bundled text encoder/VAE, the run fails
         # (ComfyUI reports a generic "error"). Flip the switch node so the
         # separate CLIPLoader/VAELoader are used, and retry once.

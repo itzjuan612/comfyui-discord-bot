@@ -1,9 +1,9 @@
+import json
 import logging
 import os
-import sqlite3
-import threading
 import time
-from contextlib import contextmanager
+
+import db
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generations.db")
 log = logging.getLogger("bot")
@@ -14,32 +14,12 @@ log = logging.getLogger("bot")
 MAX_AGE_SECONDS = 30 * 24 * 3600
 
 
-_conn: sqlite3.Connection | None = None
-_conn_lock = threading.Lock()
+_db = db.Database(DB_PATH)
 
 
-def _connect() -> sqlite3.Connection:
-    """Return the persistent connection, creating it once (thread-safe)."""
-    global _conn
-    if _conn is None:
-        with _conn_lock:
-            if _conn is None:
-                conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-                conn.execute("PRAGMA journal_mode=WAL")
-                _conn = conn
-    return _conn
-
-
-@contextmanager
 def _locked_conn():
-    """Yield the persistent connection while holding the module lock.
-
-    Serializes all access on the single shared connection so sqlite3 is
-    thread-safe and per-query connect/close overhead is eliminated.
-    """
-    conn = _connect()
-    with _conn_lock:
-        yield conn
+    """Yield the shared connection while holding the database lock."""
+    return _db.locked()
 
 
 def init_db() -> None:
@@ -73,7 +53,6 @@ def init_db() -> None:
 
 def save(message_id: int, payload: dict) -> None:
     """Persist generation params for a message (as JSON), timestamped for pruning."""
-    import json
     with _locked_conn() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO generations (message_id, payload, created_at) VALUES (?, ?, ?)",
@@ -83,7 +62,6 @@ def save(message_id: int, payload: dict) -> None:
 
 
 def get(message_id: int) -> dict | None:
-    import json
     with _locked_conn() as conn:
         row = conn.execute(
             "SELECT payload FROM generations WHERE message_id = ?", (message_id,)

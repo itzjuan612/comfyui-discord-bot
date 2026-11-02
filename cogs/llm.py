@@ -6,14 +6,30 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core import config, log, ban_guard, check_cooldown, nsfw_blocked, schedule_message_deletion, reply_error, QueueWaitUpdater, ASPECT_RATIO_CHOICES
-from llm_client import fetch_llm_models, llm_model_load, probe_reasoning_efforts, llm_model_unload, call_llm, resolve_reasoning_effort
-from ui.autocomplete import llm_model_autocomplete
+from core import (
+    ASPECT_RATIO_CHOICES,
+    QueueWaitUpdater,
+    ban_guard,
+    check_cooldown,
+    config,
+    log,
+    normalize_aspect_ratio,
+    nsfw_blocked,
+    reply_error,
+    schedule_message_deletion,
+)
 from job_queue import job_queue
+from llm_client import (
+    call_llm,
+    fetch_llm_models,
+    llm_model_load,
+    llm_model_unload,
+    probe_reasoning_efforts,
+    resolve_reasoning_effort,
+)
+from ui.autocomplete import llm_model_autocomplete
 from ui.views import ThinkingView
 from workflow import run_text_workflow
-from core import normalize_aspect_ratio
-
 
 
 class LLMCog(commands.Cog):

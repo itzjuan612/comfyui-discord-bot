@@ -2,7 +2,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core import user_settings, QUALITY_CHOICES, ASPECT_RATIO_CHOICES, SAMPLER_CHOICES, SCHEDULER_CHOICES
+from core import (
+    ASPECT_RATIO_CHOICES,
+    QUALITY_CHOICES,
+    SAMPLER_CHOICES,
+    SCHEDULER_CHOICES,
+    user_settings,
+)
 from ui.autocomplete import _sdxl_model_autocomplete, _zimage_model_autocomplete
 
 

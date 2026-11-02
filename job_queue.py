@@ -1,19 +1,97 @@
 import asyncio
 import logging
+import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from typing import Any
 
 from core import config
 
 log = logging.getLogger("job_queue")
 
 
+class JobCancelled(Exception):
+    """Raised when a job was cancelled before it produced a result."""
+
+
+class JobQueuedTimeout(JobCancelled):
+    """Raised when a job expired while still waiting in line."""
+
+
+class JobRunTimeout(JobCancelled):
+    """Raised when a running job exceeded its execution budget."""
+
+
+def _timeout_setting(key: str, default: float | None) -> float | None:
+    """Read a ``queueing.<key>`` seconds value; 0 or None disables it."""
+    value = config.get("queueing", {}).get(key)
+    if value is None:
+        return default
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        log.warning("Invalid queueing.%s=%r; using %s", key, value, default)
+        return default
+    return seconds if seconds > 0 else None
+
+
+# A queued job this old is dropped: its Discord interaction can no longer be
+# answered anyway (followup tokens expire after 15 minutes).
+DEFAULT_QUEUED_TIMEOUT = 900.0
+# No default run budget: ComfyUI's own poll timeout already bounds a prompt.
+DEFAULT_RUN_TIMEOUT: float | None = None
+
+
+@dataclass(eq=False)
+class Job:
+    """A unit of work waiting for, or occupying, a queue lane.
+
+    Await the job to get its result, exactly like the Future ``submit`` used
+    to return. ``cancel()`` asks the worker to drop it: a queued job is never
+    started, a running one is cancelled and ``on_cancel`` (if set) is awaited
+    so the external resource — ComfyUI sampling, an LLM request — stops too.
+    """
+
+    coro: Any
+    name: str = "job"
+    queued_timeout: float | None = None
+    run_timeout: float | None = None
+    on_cancel: Callable[[], Awaitable[None]] | None = None
+    created_at: float = field(default_factory=time.monotonic)
+
+    def __post_init__(self) -> None:
+        loop = asyncio.get_running_loop()
+        self._future = loop.create_future()
+        self._cancel_event = asyncio.Event()
+        # Mark abandoned results as retrieved so a cancelled or timed-out job
+        # whose caller already went away does not log "never retrieved".
+        self._future.add_done_callback(_retrieve)
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancel_event.is_set()
+
+    def cancel(self) -> None:
+        """Mark this job for cancellation. Safe to call from any task."""
+        self._cancel_event.set()
+
+    def __await__(self):
+        return self._future.__await__()
+
+
+def _retrieve(future: asyncio.Future) -> None:
+    if not future.cancelled():
+        future.exception()
+
+
 class JobQueue:
     """A single-slot, FIFO queue for long-running, resource-heavy jobs.
 
     Jobs are coroutines. They are executed strictly one at a time, in the
-    order they were submitted. ``submit`` returns an ``asyncio.Future`` that
-    resolves to the job's return value (or raises the job's exception), so
-    callers can ``await`` the Future to get the result. ``wait_drained``
-    blocks until every submitted job has finished.
+    order they were submitted. ``submit`` returns a ``Job`` that resolves to
+    the job's return value (or raises its exception), so callers can ``await``
+    it to get the result. ``wait_drained`` blocks until every submitted job
+    has finished.
     """
 
     def __init__(self):
@@ -31,26 +109,86 @@ class JobQueue:
             self._worker_task = asyncio.ensure_future(self._worker())
 
     async def _worker(self) -> None:
-        """Consume jobs from the queue one at a time, resolving each future."""
+        """Consume jobs from the queue one at a time, resolving each job."""
         while True:
-            name, coro, done = await self._queue.get()
+            job: Job = await self._queue.get()
             # Job moves from the queue to the running slot.
             self._pending -= 1
             self._active += 1
             for callback in list(self._listeners):
-                asyncio.create_task(self._fire(callback, "start", coro))
+                asyncio.create_task(self._fire(callback, "start", job.coro))
             try:
-                result = await coro
-            except Exception as exc:
-                done.set_exception(exc)
-            else:
-                done.set_result(result)
+                await self._run(job)
             finally:
                 self._active -= 1
                 if self._pending == 0 and self._active == 0:
                     self._drained.set()
                 for callback in list(self._listeners):
-                    asyncio.create_task(self._fire(callback, "finish", coro))
+                    asyncio.create_task(self._fire(callback, "finish", job.coro))
+
+    async def _run(self, job: Job) -> None:
+        """Run one job, honouring cancellation and the queued/run budgets."""
+        if job.cancelled:
+            job.coro.close()
+            log.info("job %s cancelled before it started", job.name)
+            self._finish(job, exc=JobCancelled("Cancelled while waiting in the queue"))
+            return
+        waited = time.monotonic() - job.created_at
+        if job.queued_timeout is not None and waited > job.queued_timeout:
+            job.coro.close()
+            log.info("job %s waited %.0fs in queue; dropping it", job.name, waited)
+            self._finish(job, exc=JobQueuedTimeout("Timed out waiting in the queue"))
+            return
+
+        work = asyncio.ensure_future(job.coro)
+        cancel_wait = asyncio.ensure_future(job._cancel_event.wait())
+        try:
+            done, _ = await asyncio.wait(
+                {work, cancel_wait},
+                timeout=job.run_timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if work in done:
+                self._finish(job, result=work.result())
+            elif cancel_wait in done:
+                await self._stop(job, work, JobCancelled("Cancelled"))
+            else:
+                await self._stop(
+                    job,
+                    work,
+                    JobRunTimeout(
+                        f"Stopped after exceeding the {job.run_timeout:.0f}s time limit"
+                    ),
+                )
+        except Exception as exc:  # noqa: BLE001 - the worker must never die
+            self._finish(job, exc=exc)
+        finally:
+            cancel_wait.cancel()
+            if not work.done():
+                work.cancel()
+            # Collect both tasks so nothing is left pending on the loop.
+            await asyncio.gather(work, cancel_wait, return_exceptions=True)
+
+    async def _stop(self, job: Job, work: asyncio.Future, exc: Exception) -> None:
+        """Cancel the running coroutine, stop the resource, fail the job."""
+        work.cancel()
+        await asyncio.gather(work, return_exceptions=True)
+        if job.on_cancel is not None:
+            try:
+                await job.on_cancel()
+            except Exception:
+                log.exception("on_cancel callback failed for %s", job.name)
+        log.info("job %s stopped: %s", job.name, exc)
+        self._finish(job, exc=exc)
+
+    @staticmethod
+    def _finish(job: Job, *, result: Any = None, exc: BaseException | None = None) -> None:
+        if job._future.done():
+            return
+        if exc is not None:
+            job._future.set_exception(exc)
+        else:
+            job._future.set_result(result)
 
     async def _fire(self, callback, event: str, coro) -> None:
         """Invoke a listener callback, never letting its failure break the worker."""
@@ -69,20 +207,42 @@ class JobQueue:
         except ValueError:
             pass
 
-    def submit(self, coro, name: str = "job") -> asyncio.Future:
+    def submit(
+        self,
+        coro,
+        name: str = "job",
+        *,
+        queued_timeout: float | None = None,
+        run_timeout: float | None = None,
+        on_cancel: Callable[[], Awaitable[None]] | None = None,
+    ) -> Job:
         """Queue ``coro`` to run serially.
 
-        Returns a Future that resolves to the coroutine's return value, or
-        raises the coroutine's exception. The job runs only after any earlier
-        submitted jobs have completed.
+        Returns a ``Job`` that resolves to the coroutine's return value, or
+        raises the coroutine's exception (or ``JobCancelled`` when it is
+        cancelled or runs past its budget). The job runs only after any
+        earlier submitted jobs have completed.
         """
-        loop = asyncio.get_running_loop()
-        done = loop.create_future()
-        self._queue.put_nowait((name, coro, done))
+        job = Job(
+            coro,
+            name=name,
+            queued_timeout=(
+                _timeout_setting("queued_timeout", DEFAULT_QUEUED_TIMEOUT)
+                if queued_timeout is None
+                else queued_timeout
+            ),
+            run_timeout=(
+                _timeout_setting("run_timeout", DEFAULT_RUN_TIMEOUT)
+                if run_timeout is None
+                else run_timeout
+            ),
+            on_cancel=on_cancel,
+        )
+        self._queue.put_nowait(job)
         self._pending += 1
         self._drained.clear()
         self._ensure_worker()
-        return done
+        return job
 
     async def wait_drained(self) -> None:
         """Await until no job is running and none are queued."""
@@ -113,6 +273,7 @@ class JobQueueManager:
         else:
             self.mode = "unified"
             self._lanes = {"unified": JobQueue()}
+        self._cancel_hooks: dict[str, Callable[[], Awaitable[None]]] = {}
 
     def _lane_key(self, lane: str) -> str:
         """Resolve which lane a job goes into for the current mode."""
@@ -121,9 +282,27 @@ class JobQueueManager:
         # unified mode has a single lane; separate mode falls back for unknown lanes
         return next(iter(self._lanes))
 
-    def submit(self, coro, lane: str = "comfyui", name: str = "job") -> asyncio.Future:
-        """Queue ``coro`` on the given lane. Returns a Future for its result."""
-        return self._lanes[self._lane_key(lane)].submit(coro, name)
+    def submit(self, coro, lane: str = "comfyui", name: str = "job", **options) -> Job:
+        """Queue ``coro`` on the given lane. Returns a Job for its result.
+
+        ``on_cancel`` defaults to the hook registered for the *requested* lane,
+        so an LLM job never stops a ComfyUI prompt even when both lanes share
+        one queue in unified mode.
+        """
+        if options.get("on_cancel") is None:
+            options.pop("on_cancel", None)
+            hook = self._cancel_hooks.get(lane)
+            if hook is not None:
+                options["on_cancel"] = hook
+        return self._lanes[self._lane_key(lane)].submit(coro, name, **options)
+
+    def set_cancel_hook(self, lane: str, callback) -> None:
+        """Set what ``on_cancel`` defaults to for jobs submitted on ``lane``.
+
+        The hook is how a lane stops its external work (e.g. ComfyUI's
+        currently sampling prompt) when a job is cancelled or times out.
+        """
+        self._cancel_hooks[lane] = callback
 
     async def wait_drained(self) -> None:
         """Await until every lane has no running or queued jobs."""

@@ -1,8 +1,8 @@
+import logging
 import os
 import sqlite3
-import threading
-import logging
-from contextlib import contextmanager
+
+import db
 
 log = logging.getLogger("user_settings")
 
@@ -73,8 +73,7 @@ MIGRATED_COLUMNS = {
 }
 
 
-_conn: sqlite3.Connection | None = None
-_conn_lock = threading.Lock()
+_db = db.Database(DB_PATH)
 
 # In-memory cache of checkpoints known to lack a bundled text encoder/VAE.
 # Loaded once from the database at startup so per-generation lookups are
@@ -83,28 +82,9 @@ _conn_lock = threading.Lock()
 _split_cache: set[str] = set()
 
 
-def _connect() -> sqlite3.Connection:
-    """Return the persistent connection, creating it once (thread-safe)."""
-    global _conn
-    if _conn is None:
-        with _conn_lock:
-            if _conn is None:
-                conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-                conn.execute("PRAGMA journal_mode=WAL")
-                _conn = conn
-    return _conn
-
-
-@contextmanager
 def _locked_conn():
-    """Yield the persistent connection while holding the module lock.
-
-    Serializes all access on the single shared connection so sqlite3 is
-    thread-safe and per-query connect/close overhead is eliminated.
-    """
-    conn = _connect()
-    with _conn_lock:
-        yield conn
+    """Yield the shared connection while holding the database lock."""
+    return _db.locked()
 
 
 def init_db() -> None:

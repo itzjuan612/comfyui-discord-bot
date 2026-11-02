@@ -5,12 +5,24 @@ import discord
 from discord.ext import commands
 
 from core import (
-    log, config, BOT_OWNER_ID,
-    T2I_MODELS, UPSCALE_MODELS, I2I_MODELS,
-    user_settings, generation_store, moderation,
+    BOT_OWNER_ID,
+    I2I_MODELS,
+    T2I_MODELS,
+    UPSCALE_MODELS,
+    comfy,
+    config,
+    generation_store,
+    log,
+    moderation,
+    user_settings,
 )
+from job_queue import job_queue
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+
+# A cancelled or timed-out ComfyUI job must also stop the GPU work, otherwise
+# the server keeps sampling a prompt nobody will ever see.
+job_queue.set_cancel_hook("comfyui", comfy.interrupt)
 
 # Cog extensions. They are loaded via bot.load_extension() in setup_hook
 # (below), which keeps this module free of the circular cogs -> ui.views ->
@@ -19,9 +31,9 @@ bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
 # is only ever loaded once and there is a single Bot instance for everything.
 COGS = ("cogs.generation", "cogs.llm", "cogs.admin", "cogs.settings")
 
-from ui.views import GenerationView
 from http_session import close_session
-from llm_client import refresh_llm_models, llm_model_refresh_loop
+from llm_client import llm_model_refresh_loop, refresh_llm_models
+from ui.views import GenerationView
 
 
 @bot.event

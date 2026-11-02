@@ -13,6 +13,13 @@ comfyui:
 #               at a time, but the two can run concurrently (up to 2 jobs).
 queueing:
   mode: unified
+  # Seconds a job may wait in line before it is dropped with a
+  # "timed out in queue" error. 0 or absent disables the limit.
+  queued_timeout: 900
+  # Seconds a running job may take before it is cancelled and ComfyUI is
+  # interrupted. 0 or absent means no limit (ComfyUI's own poll timeout
+  # still applies).
+  run_timeout: 0
 
 # NSFW guardrail: refuse NSFW prompts unless run in a Discord-marked NSFW channel.
 nsfw:

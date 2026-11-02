@@ -1,0 +1,4 @@
+# Development tooling. The runtime needs requirements.txt as well; the tests
+# themselves are offline (they stub `core`, so no discord.py/aiohttp needed).
+pytest>=8
+ruff>=0.6

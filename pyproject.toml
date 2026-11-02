@@ -1,0 +1,34 @@
+[project]
+name = "comfyui-discord-bot"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["workflows"]
+
+[tool.ruff.lint]
+# Conservative on purpose: the shipped modules have not had a formatting pass
+# yet, so only the rules the code already satisfies (plus import sorting) are
+# enforced. Tighten this list in a dedicated style commit, not inside a logic
+# change.
+select = ["E4", "E7", "E9", "F", "I", "UP032", "UP035"]
+ignore = [
+    # Imports follow the logger/config setup in core.py, bot.py and diag.py on
+    # purpose: those modules must configure logging and read config first, and
+    # bot.py imports cogs/views late to avoid an import cycle.
+    "E402",
+    # core.py and bot.py re-export names that cogs import from them.
+    "F401",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "bot", "cogs", "comfyui_client", "config_loader", "core", "db",
+    "generation_store", "job_queue", "llm_client", "moderation", "nsfw_guard",
+    "ui", "user_settings", "workflow",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

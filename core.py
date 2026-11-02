@@ -10,23 +10,24 @@ import random
 import subprocess
 import sys
 
-from PIL import Image
 import discord
 from discord import app_commands
-from discord.ext import commands
-from discord.ui import View, Button, Modal, TextInput, Select
 from discord.enums import TextStyle
+from discord.ext import commands
+from discord.ui import Button, Modal, Select, TextInput, View
+from PIL import Image
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("bot")
 
+import generation_store
+import moderation
+import nsfw_guard
+import user_settings
 from comfyui_client import ComfyUIClient, ComfyUIError
 from config_loader import load_config
 from http_session import get_session
-import user_settings
-import generation_store
-import nsfw_guard
-import moderation
+
 config = load_config()
 # Predefined bot owner (config.yaml: owner.id). The owner and promoted admins
 # get elevated permissions (delete any output, /admin controls).

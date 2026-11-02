@@ -1,27 +1,45 @@
 import io
-
-from PIL import Image
-import discord
 import logging
 from typing import Optional
+
+import discord
 from discord import app_commands
 from discord.ext import commands
+from PIL import Image
 
 from core import (
-    config, comfy, log, user_settings,
-    image_resolution, encode_resolution, uuid_hex,
-    reply_error, ban_guard, check_cooldown, nsfw_blocked, can_manage, download_image,
-    deliver_generation,
-    schedule_message_deletion,
-    ProgressUpdater, normalize_aspect_ratio,
-    UPSCALE_CHOICES, ASPECT_RATIO_CHOICES, QUALITY_CHOICES,
-    SAMPLER_CHOICES, SCHEDULER_CHOICES,
+    ASPECT_RATIO_CHOICES,
+    QUALITY_CHOICES,
+    SAMPLER_CHOICES,
+    SCHEDULER_CHOICES,
+    UPSCALE_CHOICES,
     ComfyUIError,
+    ProgressUpdater,
+    ban_guard,
+    can_manage,
+    check_cooldown,
+    comfy,
+    config,
+    deliver_generation,
+    download_image,
+    encode_resolution,
+    image_resolution,
+    log,
+    normalize_aspect_ratio,
+    nsfw_blocked,
+    reply_error,
+    schedule_message_deletion,
+    user_settings,
+    uuid_hex,
 )
-from ui.autocomplete import _sdxl_model_autocomplete, _sdxl_lora_autocomplete, _zimage_model_autocomplete
-from workflow import run_image
-from ui.views import CheckpointPickerView
 from job_queue import job_queue
+from ui.autocomplete import (
+    _sdxl_lora_autocomplete,
+    _sdxl_model_autocomplete,
+    _zimage_model_autocomplete,
+)
+from ui.views import CheckpointPickerView
+from workflow import run_image
 
 
 async def run_t2i_generation(interaction: discord.Interaction, model: str,
