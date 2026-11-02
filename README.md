@@ -1,5 +1,7 @@
 # Juan's ComfyUI Discord Bot
 
+[![ci](https://github.com/itzjuan612/comfyui-discord-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/itzjuan612/comfyui-discord-bot/actions/workflows/ci.yml)
+
 A Discord bot that exposes ComfyUI image generation workflows as slash commands. Users can generate text-to-image, image-to-image edits, upscaling, and LLM-assisted prompt engineering directly from Discord channels.
 
 <p><img src="banner.png" alt="Juan's ComfyUI Discord Bot" width="800"></p>
@@ -384,3 +386,24 @@ comfyuidiscord/
 - **Stored prompts are re-gated:** Retry, the SDXL upscale checkpoint picker, and Edit Image re-run the keyword NSFW gate on the stored/original prompt (and the current channel's NSFW marking) before spending GPU time, so a message saved before a channel lost its NSFW tag can't be regenerated with a bypass.
 - **Parameter clamping:** GPU-heavy slash-command parameters are bounded by Discord `Range` validators and re-checked at runtime — steps ≤ 150, width/height ≤ 4096, batch_size ≤ 8, upscale scale ≤ 4, megapixels ≤ 8, `max_tokens` ≤ 4096 — and generation prompts shown in embeds are truncated so embeds never exceed Discord's limits.
 - **Attachment validation:** Images attached to `/upscale`, `/flux_edit`, and `/qwen_edit` are downloaded through one helper that checks the content type is an image and caps size before uploading to ComfyUI.
+
+## Known limitations
+
+- **`/interrupt` is not prompt-scoped.** Cancel and bot shutdown stop whatever ComfyUI is sampling, not a specific `prompt_id`. The bot serializes its own jobs, so that is always the job being cancelled — but if you share the same ComfyUI with another client, stopping the bot also stops that client's prompt.
+- **Cancelling `/gen_prompt` only stops our side.** OpenAI-compatible endpoints have no cancel call, so the LLM server may finish generating after the disconnect. The model is unloaded and the result discarded.
+- **SQLite is synchronous, on purpose.** One shared WAL connection per database with `busy_timeout=5000`, guarded by a per-database lock that commits on success and rolls back on failure. Fine for the bot's single-row indexed queries; a much heavier write load would want `aiosqlite` and an async call-site migration.
+- **Retry cannot replay pre-0.6.0 messages.** Their stored specs reference workflows and node IDs that no longer exist.
+- **The test suite is offline.** It stubs `core`, so it covers the workflow, queue and SQLite layers without Discord or ComfyUI; those paths are verified by hand.
+
+## Contributing
+
+```bash
+pip install -r requirements-dev.txt
+pre-commit install     # ruff lint + format on every commit
+pytest                 # offline suite with an 80% coverage gate
+```
+
+- `ruff check .` and `ruff format --check .` are exactly what CI runs, pinned to the same ruff minor as the pre-commit hook.
+- New model or workflow support should stay config-only (`config.yaml` spec + a workflow JSON). Logic changes belong in `workflow.py`'s patchers, and anything non-trivial needs a test under `tests/`.
+- When you add a config key, add it to `config_loader.DEFAULT_CONFIG` and `config.example.yaml` — the backfill is derived from the former.
+- One concern per pull request.

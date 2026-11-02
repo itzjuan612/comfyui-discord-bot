@@ -36,14 +36,10 @@ def init_db() -> None:
         # One-time migration for databases created before created_at existed.
         cols = [row[1] for row in conn.execute("PRAGMA table_info(generations)")]
         if "created_at" not in cols:
-            conn.execute(
-                "ALTER TABLE generations ADD COLUMN created_at REAL NOT NULL DEFAULT 0"
-            )
+            conn.execute("ALTER TABLE generations ADD COLUMN created_at REAL NOT NULL DEFAULT 0")
             # Give pre-existing rows a fresh timestamp so they are not
             # immediately pruned despite possibly recent activity.
-            conn.execute(
-                "UPDATE generations SET created_at = ?", (time.time(),)
-            )
+            conn.execute("UPDATE generations SET created_at = ?", (time.time(),))
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_generations_created ON generations (created_at)"
         )

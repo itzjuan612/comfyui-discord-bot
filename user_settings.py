@@ -114,14 +114,16 @@ def init_db() -> None:
         # Rename: /img2img became /flux_edit, which became /settings flux;
         # carry saved values over. Runs old -> new twice so a database that
         # still has the img2img columns lands on the final names.
-        for old, new in (("img2img_cfg", "flux_edit_cfg"),
-                         ("img2img_steps", "flux_edit_steps"),
-                         ("img2img_sampler", "flux_edit_sampler"),
-                         ("img2img_megapixels", "flux_edit_megapixels"),
-                         ("flux_edit_cfg", "flux_cfg"),
-                         ("flux_edit_steps", "flux_steps"),
-                         ("flux_edit_sampler", "flux_sampler"),
-                         ("flux_edit_megapixels", "flux_megapixels")):
+        for old, new in (
+            ("img2img_cfg", "flux_edit_cfg"),
+            ("img2img_steps", "flux_edit_steps"),
+            ("img2img_sampler", "flux_edit_sampler"),
+            ("img2img_megapixels", "flux_edit_megapixels"),
+            ("flux_edit_cfg", "flux_cfg"),
+            ("flux_edit_steps", "flux_steps"),
+            ("flux_edit_sampler", "flux_sampler"),
+            ("flux_edit_megapixels", "flux_megapixels"),
+        ):
             if old in existing and new not in existing:
                 try:
                     conn.execute(f"ALTER TABLE user_settings RENAME COLUMN {old} TO {new}")
@@ -188,19 +190,33 @@ def get_settings(discord_id: int) -> dict:
     if row is None:
         return {
             "negative_prompt": "",
-            "sdxl_checkpoint": None, "zimage_model": None,
-            "width": None, "height": None,
-            "sdxl_steps": None, "sdxl_cfg": None,
-            "zimage_steps": None, "zimage_cfg": None,
-            "sdxl_sampler": None, "sdxl_scheduler": None,
-            "zimage_sampler": None, "zimage_scheduler": None,
-            "ideogram_quality": None, "ideogram_megapixels": None,
+            "sdxl_checkpoint": None,
+            "zimage_model": None,
+            "width": None,
+            "height": None,
+            "sdxl_steps": None,
+            "sdxl_cfg": None,
+            "zimage_steps": None,
+            "zimage_cfg": None,
+            "sdxl_sampler": None,
+            "sdxl_scheduler": None,
+            "zimage_sampler": None,
+            "zimage_scheduler": None,
+            "ideogram_quality": None,
+            "ideogram_megapixels": None,
             "ideogram_aspect_ratio": None,
-            "flux_negative": None, "flux_cfg": None, "flux_steps": None,
-            "flux_sampler": None, "flux_scheduler": None, "flux_megapixels": None,
-            "qwen_steps": None, "qwen_cfg": None,
-            "qwen_sampler": None, "qwen_scheduler": None,
-            "qwen_megapixels": None, "qwen_aspect_ratio": None,
+            "flux_negative": None,
+            "flux_cfg": None,
+            "flux_steps": None,
+            "flux_sampler": None,
+            "flux_scheduler": None,
+            "flux_megapixels": None,
+            "qwen_steps": None,
+            "qwen_cfg": None,
+            "qwen_sampler": None,
+            "qwen_scheduler": None,
+            "qwen_megapixels": None,
+            "qwen_aspect_ratio": None,
             "stealth": False,
         }
     return dict(zip(SETTINGS_FIELDS, row))
@@ -249,8 +265,10 @@ def reset_settings(discord_id: int) -> dict:
 
 def format_settings(s: dict) -> str:
     """Human-readable summary of a user's defaults, in the canonical /settings order."""
+
     def fmt(value):
         return value if value not in (None, "") else "(none)"
+
     stealth_default = "yes" if s.get("stealth") else "no"
     bullet = "\u2022"
     return (

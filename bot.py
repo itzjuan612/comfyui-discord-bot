@@ -71,7 +71,8 @@ def _loop_exception_handler(loop, context):
         log.debug("Ignoring harmless asyncio shutdown callback: %s", message)
         return
     log.error(
-        "Unhandled asyncio exception: %s", exc,
+        "Unhandled asyncio exception: %s",
+        exc,
         exc_info=exc,
     )
 
@@ -93,7 +94,8 @@ async def _setup_hook():
     bot.add_view(persistent_view)
     log.info(
         "Registered persistent GenerationView: persistent=%s, dispatchable=%s",
-        persistent_view.is_persistent(), persistent_view.is_dispatchable(),
+        persistent_view.is_persistent(),
+        persistent_view.is_dispatchable(),
     )
     await bot.tree.sync()
 
@@ -104,7 +106,9 @@ bot.setup_hook = _setup_hook
 @bot.event
 async def on_ready():
     asyncio.get_running_loop().set_exception_handler(_loop_exception_handler)
-    print(f"Bot ready. T2I models: {T2I_MODELS}, Upscale models: {UPSCALE_MODELS}, I2I models: {I2I_MODELS}")
+    print(
+        f"Bot ready. T2I models: {T2I_MODELS}, Upscale models: {UPSCALE_MODELS}, I2I models: {I2I_MODELS}"
+    )
     # Fetch the LLM model list in the background so startup is never blocked
     # by the LLM endpoint, and keep it refreshed on a schedule.
     asyncio.create_task(refresh_llm_models(force=True))

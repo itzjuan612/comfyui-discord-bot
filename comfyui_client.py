@@ -84,7 +84,9 @@ def _extract_progress(
                 # expansion may report a different id for the same node.
                 if progress_total is None or maximum != float(progress_total):
                     return None
-            elif node_at is None and progress_total is not None and maximum != float(progress_total):
+            elif (
+                node_at is None and progress_total is not None and maximum != float(progress_total)
+            ):
                 return None
         return value / maximum
     return None
@@ -159,9 +161,7 @@ class ComfyUIClient:
                 ws = None
                 try:
                     session = get_session()
-                    ws = await session.ws_connect(
-                        self._ws_url() + "/ws?clientId=" + client_id
-                    )
+                    ws = await session.ws_connect(self._ws_url() + "/ws?clientId=" + client_id)
                     async for msg in ws:
                         if seen or finished:
                             break
@@ -357,7 +357,9 @@ class ComfyUIClient:
         except Exception as exc:
             log.warning("could not interrupt ComfyUI on shutdown: %s", exc)
 
-    async def wait_for_output_text(self, prompt_id: str, timeout: float = 300.0, target_node: str | None = None) -> str:
+    async def wait_for_output_text(
+        self, prompt_id: str, timeout: float = 300.0, target_node: str | None = None
+    ) -> str:
         """Poll /history until the prompt finishes; returns the text output.
 
         If ``target_node`` is given, only that node's output is considered,

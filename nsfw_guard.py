@@ -11,6 +11,7 @@ to ONNX and run locally on CPU via ONNX Runtime. It is lazy-loaded so importing
 nsfw_guard has no cost until an image is actually checked, and it runs in a
 worker thread so the asyncio event loop is never blocked.
 """
+
 import asyncio
 import io
 import logging
@@ -24,21 +25,70 @@ log = logging.getLogger("nsfw_guard")
 # creative phrasings are still caught.
 DEFAULT_NSFW_TERMS = (
     # Explicit / pornographic
-    "nsfw", "porn", "pornographic", "pornography", "explicit", "xxx", "erotic", "eroticism", "hentai",
+    "nsfw",
+    "porn",
+    "pornographic",
+    "pornography",
+    "explicit",
+    "xxx",
+    "erotic",
+    "eroticism",
+    "hentai",
     # Nudity
-    "nude", "naked", "nudity", "topless", "striptease",
-    "undress", "undressed",
+    "nude",
+    "naked",
+    "nudity",
+    "topless",
+    "striptease",
+    "undress",
+    "undressed",
     # Sexual acts
-    "sex", "sexual", "intercourse", "orgy", "threesome", "gangbang",
-    "fetish", "kinky", "lust", "arousal", "aroused", "orgasm",
-    "cum", "cumshot", "creampie",
+    "sex",
+    "sexual",
+    "intercourse",
+    "orgy",
+    "threesome",
+    "gangbang",
+    "fetish",
+    "kinky",
+    "lust",
+    "arousal",
+    "aroused",
+    "orgasm",
+    "cum",
+    "cumshot",
+    "creampie",
     # Body parts / sexual references
-    "boob", "boobs", "breast", "tits", "titty", "butt", "ass",
-    "asshole", "vagina", "vulva", "pussy", "penis", "cock", "dick",
-    "anal", "anus", "booty", "thong", "lingerie",
+    "boob",
+    "boobs",
+    "breast",
+    "tits",
+    "titty",
+    "butt",
+    "ass",
+    "asshole",
+    "vagina",
+    "vulva",
+    "pussy",
+    "penis",
+    "cock",
+    "dick",
+    "anal",
+    "anus",
+    "booty",
+    "thong",
+    "lingerie",
     # Other
-    "stripper", "sex worker", "prostitute", "escort", "slut", "whore",
-    "sexy", "seductive", "seduction", "18+",
+    "stripper",
+    "sex worker",
+    "prostitute",
+    "escort",
+    "slut",
+    "whore",
+    "sexy",
+    "seductive",
+    "seduction",
+    "18+",
 )
 
 _pattern = None
@@ -48,9 +98,7 @@ def configure(extra_terms=()):
     """(Re)build the compiled keyword pattern, optionally extending the
     built-in term list with user-supplied extra keywords from config."""
     global _pattern
-    terms = tuple(t.lower() for t in DEFAULT_NSFW_TERMS) + tuple(
-        t.lower() for t in extra_terms
-    )
+    terms = tuple(t.lower() for t in DEFAULT_NSFW_TERMS) + tuple(t.lower() for t in extra_terms)
     body = "|".join(re.escape(t) for t in terms)
     # Match whole words only, allowing a trailing "s" for plurals.
     _pattern = re.compile(r"(?<![A-Za-z])(?:%s)s?(?![A-Za-z])" % body)
@@ -181,7 +229,9 @@ def is_nsfw_image(image_bytes: bytes) -> bool:
     score = _max_nsfw_score(image_bytes)
     log.info(
         "nsfw_image_check: max_score=%.3f threshold=%.2f -> %s",
-        score, _image_threshold, "NSFW" if score >= _image_threshold else "safe",
+        score,
+        _image_threshold,
+        "NSFW" if score >= _image_threshold else "safe",
     )
     return score >= _image_threshold
 

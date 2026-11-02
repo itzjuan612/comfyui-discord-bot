@@ -421,7 +421,12 @@ def _scan_model_blocks(lines: list[str], models_line: int) -> dict[str, tuple[in
     blocks = {}
     for i in range(models_line + 1, section_end):
         stripped = lines[i].strip()
-        if stripped and lines[i].startswith("  ") and not lines[i].startswith("    ") and stripped.endswith(":"):
+        if (
+            stripped
+            and lines[i].startswith("  ")
+            and not lines[i].startswith("    ")
+            and stripped.endswith(":")
+        ):
             name = stripped.rstrip(":")
             blocks[name] = (i, _find_block_end(lines, i, 2))
     return blocks
@@ -474,7 +479,9 @@ def _persist_backfilled_text(path: str, text: str, missing: dict) -> None:
         # Positions of each template workflow type within this model block.
         wf_idx_by_type = {}
         for workflow_type in defaults[name]:
-            wf_idx_by_type[workflow_type] = _find_key_at_indent(lines, start + 1, end, 4, workflow_type)
+            wf_idx_by_type[workflow_type] = _find_key_at_indent(
+                lines, start + 1, end, 4, workflow_type
+            )
 
         # Insert missing keys inside their workflow sub-blocks. Process the
         # sub-blocks from bottom to top so earlier positions don't shift.
@@ -492,7 +499,9 @@ def _persist_backfilled_text(path: str, text: str, missing: dict) -> None:
         # Append workflow types that are missing entirely to the end of the block.
         for workflow_type in defaults[name]:
             if wf_idx_by_type[workflow_type] is None:
-                block_lines.extend(_workflow_block_lines(workflow_type, defaults[name][workflow_type]))
+                block_lines.extend(
+                    _workflow_block_lines(workflow_type, defaults[name][workflow_type])
+                )
 
         lines[start:end] = block_lines
 
@@ -508,7 +517,9 @@ def _persist_backfilled_text(path: str, text: str, missing: dict) -> None:
         f.write("\n".join(lines) + "\n")
 
 
-def _find_key_at_indent(lines: list[str], start: int, end: int, indent: int, key: str) -> int | None:
+def _find_key_at_indent(
+    lines: list[str], start: int, end: int, indent: int, key: str
+) -> int | None:
     """Index of a key line at exactly ``indent`` spaces within [start, end)."""
     target = " " * indent + key + ":"
     for i in range(start, end):

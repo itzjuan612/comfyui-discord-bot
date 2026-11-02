@@ -14,6 +14,8 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
+      - run: ruff format --check .
       # The test suite is offline: it stubs `core`, so the heavy runtime
       # dependencies (discord.py, aiohttp, onnxruntime) are not installed.
+      # Coverage is configured in pyproject.toml (80% floor).
       - run: pytest

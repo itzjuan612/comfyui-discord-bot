@@ -1,5 +1,3 @@
-
-
 import asyncio
 import io
 import json
@@ -36,8 +34,11 @@ BOT_OWNER_ID = int(config.get("owner", {}).get("id", 0) or 0)
 # Models available for each command (based on which spec each model defines).
 T2I_MODELS = [m for m, cfg in config["models"].items() if "t2i" in cfg]
 UPSCALE_MODELS = [m for m, cfg in config["models"].items() if "upscale" in cfg]
-I2I_MODELS = [m for m, cfg in config["models"].items()
-              if "i2i_single" in cfg or "i2i_multi" in cfg or "i2i" in cfg]
+I2I_MODELS = [
+    m
+    for m, cfg in config["models"].items()
+    if "i2i_single" in cfg or "i2i_multi" in cfg or "i2i" in cfg
+]
 UPSCALE_CHOICES = [app_commands.Choice(name=m, value=m) for m in UPSCALE_MODELS]
 
 # Human-friendly labels for the upscale model selection buttons.
@@ -64,26 +65,49 @@ ASPECT_RATIOS = [
 ASPECT_RATIO_CHOICES = [app_commands.Choice(name=r, value=r) for r in ASPECT_RATIOS]
 # Trimmed down to exactly 25 core options for native static dropdowns
 SAMPLER_NAMES = [
-    "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", 
-    "dpm_3", "dpm_3_ancestral", "dpmpp_2s_ancestral", "dpmpp_2m", 
-    "dpmpp_2m_sde", "dpmpp_2m_sde_gpu", "dpmpp_3m_sde", "dpmpp_3m_sde_gpu", 
-    "dpmpp_sde", "dpmpp_sde_gpu", "lcm", "ddim", "uni_pc", "uni_pc_bh2", 
-    "sa_solver", "seeds_2", "gradient_estimation", "dpm_adaptive", 
-    "ipndf", "deis"
+    "euler",
+    "euler_ancestral",
+    "heun",
+    "dpm_2",
+    "dpm_2_ancestral",
+    "dpm_3",
+    "dpm_3_ancestral",
+    "dpmpp_2s_ancestral",
+    "dpmpp_2m",
+    "dpmpp_2m_sde",
+    "dpmpp_2m_sde_gpu",
+    "dpmpp_3m_sde",
+    "dpmpp_3m_sde_gpu",
+    "dpmpp_sde",
+    "dpmpp_sde_gpu",
+    "lcm",
+    "ddim",
+    "uni_pc",
+    "uni_pc_bh2",
+    "sa_solver",
+    "seeds_2",
+    "gradient_estimation",
+    "dpm_adaptive",
+    "ipndf",
+    "deis",
 ]
 
 
-SAMPLER_CHOICES = [
-    app_commands.Choice(name=s, value=s)
-    for s in SAMPLER_NAMES
-]
+SAMPLER_CHOICES = [app_commands.Choice(name=s, value=s) for s in SAMPLER_NAMES]
 SCHEDULER_NAMES = [
-    "normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform", "beta", "linear_quadratic", "kl_optimal"
+    "normal",
+    "karras",
+    "exponential",
+    "sgm_uniform",
+    "simple",
+    "ddim_uniform",
+    "beta",
+    "linear_quadratic",
+    "kl_optimal",
 ]
-SCHEDULER_CHOICES = [
-    app_commands.Choice(name=s, value=s)
-    for s in SCHEDULER_NAMES
-]
+SCHEDULER_CHOICES = [app_commands.Choice(name=s, value=s) for s in SCHEDULER_NAMES]
+
+
 def normalize_aspect_ratio(value: str | None) -> str | None:
     """Map user input to the exact ResolutionSelector label.
 
@@ -99,6 +123,8 @@ def normalize_aspect_ratio(value: str | None) -> str | None:
         if r.split(" ")[0] == v:
             return r
     return v
+
+
 comfy = ComfyUIClient(config["comfyui"]["base_url"])
 
 # NSFW guardrail config.
@@ -125,6 +151,8 @@ last_ckpt_by_model: dict[str, str] = {}
 PROGRESS_BAR_WIDTH = 10
 BAR_FULL = "\u2588"
 BAR_EMPTY = "\u2591"
+
+
 def progress_bar(level: int) -> str:
     """Build the bar string for a given level (0..PROGRESS_BAR_WIDTH)."""
     level = max(0, min(PROGRESS_BAR_WIDTH, level))
@@ -172,6 +200,7 @@ class ProgressUpdater:
         self.job = job
         if self.lane:
             from job_queue import job_queue
+
             self._pos = job_queue.live_position(self.lane) or 1
             job_queue.register(self.lane, self._on_queue_event)
 
@@ -179,6 +208,7 @@ class ProgressUpdater:
         """Remove this updater from the lane's listeners."""
         if self.lane:
             from job_queue import job_queue
+
             job_queue.unregister(self.lane, self._on_queue_event)
 
     def disarm(self):
@@ -200,9 +230,7 @@ class ProgressUpdater:
         if self.done:
             return
         try:
-            await self.message.edit(
-                content=f"{self.label} [{progress_bar(level)}] {int(pct)}%"
-            )
+            await self.message.edit(content=f"{self.label} [{progress_bar(level)}] {int(pct)}%")
         except Exception as exc:
             log.warning("progress edit failed: %s", exc)
 
@@ -271,6 +299,7 @@ class QueueWaitUpdater:
         """
         self.job = job
         from job_queue import job_queue
+
         active, pending = job_queue.lane_stats(self.lane)
         if active == 0 and pending <= 1:
             # Starts immediately; leave the "thinking" state untouched.
@@ -282,6 +311,7 @@ class QueueWaitUpdater:
     def _unregister(self):
         if self.lane:
             from job_queue import job_queue
+
             job_queue.unregister(self.lane, self._on_queue_event)
 
     def disarm(self):
@@ -311,9 +341,7 @@ class QueueWaitUpdater:
                 # (picker, results, errors) take over from here.
                 await self.message.edit(content=self.label)
             else:
-                await self.message.edit(
-                    content=f"\u23f3 You're #{pos} in line.\n\n{self.label}"
-                )
+                await self.message.edit(content=f"\u23f3 You're #{pos} in line.\n\n{self.label}")
         except Exception as exc:
             log.warning("queue status edit failed: %s", exc)
 
@@ -369,6 +397,8 @@ def _parse_opt_str(value: str | None) -> str | None:
         return None
     value = value.strip()
     return value if value else None
+
+
 ERROR_LIFETIME_SECONDS = 5.0
 
 
@@ -412,7 +442,9 @@ async def reply_error(interaction: discord.Interaction, message: str, target=Non
             # edit_original_response() returns an InteractionCallbackResponse,
             # which has no .delete(); use the interaction's own delete method.
             await interaction.edit_original_response(content=message)
-            asyncio.create_task(_delete_original_response_after(interaction, ERROR_LIFETIME_SECONDS))
+            asyncio.create_task(
+                _delete_original_response_after(interaction, ERROR_LIFETIME_SECONDS)
+            )
     except Exception:
         try:
             msg = await interaction.channel.send(content=message)
@@ -448,7 +480,8 @@ async def ban_guard(interaction: discord.Interaction) -> bool:
     """
     if moderation.is_banned(interaction.user.id):
         await interaction.response.send_message(
-            content="\U0001f6ab You are banned from using this bot. Please contact an admin.", ephemeral=True
+            content="\U0001f6ab You are banned from using this bot. Please contact an admin.",
+            ephemeral=True,
         )
         return True
     return False
@@ -466,7 +499,9 @@ def nsfw_blocked(interaction, prompt: str | None) -> bool:
     nsfw_channel = nsfw_guard.is_nsfw_channel(interaction.channel)
     log.info(
         "nsfw_check: prompt_nsfw=%s channel_nsfw=%s channel=%r",
-        nsfw_prompt, nsfw_channel, getattr(interaction.channel, "name", "?"),
+        nsfw_prompt,
+        nsfw_channel,
+        getattr(interaction.channel, "name", "?"),
     )
     return nsfw_prompt and not nsfw_channel
 
@@ -503,8 +538,11 @@ async def check_cooldown(interaction) -> bool:
         return False
     cooldowns[uid] = now
     return True
+
+
 def uuid_hex() -> str:
     import uuid
+
     return uuid.uuid4().hex[:8]
 
 
@@ -593,9 +631,20 @@ def meta_lines(meta: dict) -> list[str]:
     return lines
 
 
-async def deliver_generation(interaction, *, images, meta, base_desc, color,
-                             spec, model, suffix, stealth, save_kwargs,
-                             target=None):
+async def deliver_generation(
+    interaction,
+    *,
+    images,
+    meta,
+    base_desc,
+    color,
+    spec,
+    model,
+    suffix,
+    stealth,
+    save_kwargs,
+    target=None,
+):
     """Shared post-generation pipeline used by every output path.
 
     Runs the NSFW image gate, compresses images to Discord-safe uploads,
@@ -605,6 +654,7 @@ async def deliver_generation(interaction, *, images, meta, base_desc, color,
     flows); when None, the interaction's original response is edited.
     """
     from ui.views import GenerationView  # lazy: ui.views imports this module
+
     blocked = "\u26a0\ufe0f Image blocked: NSFW content is only allowed in NSFW channels."
     for img in images:
         if await nsfw_guard.check_image_nsfw(img, interaction):
@@ -624,11 +674,19 @@ async def deliver_generation(interaction, *, images, meta, base_desc, color,
         color=discord.Color(color),
     )
     edit = interaction.edit_original_response if target is None else target.edit
-    response_msg = await edit(content="", embed=embed, attachments=files,
-                              view=GenerationView(stealth=stealth))
-    generation_store.save(response_msg.id, {
-        "spec": spec, "model": model, "suffix": suffix, "stealth": stealth,
-        "embed_desc": base_desc, "embed_color": int(embed.color),
-        "user_id": interaction.user.id,
-        "kwargs": save_kwargs,
-    })
+    response_msg = await edit(
+        content="", embed=embed, attachments=files, view=GenerationView(stealth=stealth)
+    )
+    generation_store.save(
+        response_msg.id,
+        {
+            "spec": spec,
+            "model": model,
+            "suffix": suffix,
+            "stealth": stealth,
+            "embed_desc": base_desc,
+            "embed_color": int(embed.color),
+            "user_id": interaction.user.id,
+            "kwargs": save_kwargs,
+        },
+    )

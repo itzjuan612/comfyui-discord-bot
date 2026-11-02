@@ -29,9 +29,7 @@ def _ids(table: str) -> list[int]:
 
 def _has(table: str, discord_id: int) -> bool:
     with _locked_conn() as conn:
-        row = conn.execute(
-            f"SELECT 1 FROM {table} WHERE discord_id = ?", (discord_id,)
-        ).fetchone()
+        row = conn.execute(f"SELECT 1 FROM {table} WHERE discord_id = ?", (discord_id,)).fetchone()
     return row is not None
 
 
