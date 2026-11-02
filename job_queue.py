@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -88,6 +89,8 @@ class Job:
     run_timeout: float | None = None
     on_cancel: Callable[[], Awaitable[None]] | None = None
     created_at: float = field(default_factory=time.monotonic)
+    # Set by JobQueue.submit so cancel() can drop a job that is still in line.
+    _cancel_callback: Callable[["Job"], None] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         # Binds the job to the running loop: ``submit`` is async-only, so the
@@ -109,8 +112,14 @@ class Job:
         return self._future.done()
 
     def cancel(self) -> None:
-        """Mark this job for cancellation. Safe to call from any task."""
+        """Mark this job for cancellation. Safe to call from any task.
+
+        A job that is still waiting in line is dropped right away, so the jobs
+        behind it move up immediately; a running one is stopped by the worker.
+        """
         self._cancel_event.set()
+        if self._cancel_callback is not None:
+            self._cancel_callback(self)
 
     def __await__(self):
         return self._future.__await__()
@@ -136,7 +145,11 @@ class JobQueue:
     CANCEL_HOOK_TIMEOUT = 15.0
 
     def __init__(self):
-        self._queue = asyncio.Queue()
+        # A plain deque plus a wakeup event, rather than asyncio.Queue: a
+        # queued job must be removable the moment it is cancelled, and only the
+        # worker ever awaited the queue head.
+        self._queue: deque[Job] = deque()
+        self._wakeup = asyncio.Event()
         self._worker_task = None
         self._current: Job | None = None
         self._pending = 0
@@ -153,7 +166,12 @@ class JobQueue:
     async def _worker(self) -> None:
         """Consume jobs from the queue one at a time, resolving each job."""
         while True:
-            job: Job = await self._queue.get()
+            # Nothing is awaited between the emptiness check and the clear, so
+            # a job submitted meanwhile always leaves the event set.
+            while not self._queue:
+                self._wakeup.clear()
+                await self._wakeup.wait()
+            job = self._queue.popleft()
             # Job moves from the queue to the running slot.
             self._pending -= 1
             self._active += 1
@@ -280,11 +298,37 @@ class JobQueue:
             run_timeout=RUN_TIMEOUT if run_timeout is None else run_timeout,
             on_cancel=on_cancel,
         )
-        self._queue.put_nowait(job)
+        self._queue.append(job)
+        self._wakeup.set()
+        job._cancel_callback = self._drop_queued
         self._pending += 1
         self._drained.clear()
         self._ensure_worker()
         return job
+
+    def _drop_queued(self, job: Job) -> None:
+        """Fail a job that is still waiting in line, immediately.
+
+        Called from ``Job.cancel()``. The worker only reaches a queued job once
+        the running one finishes, so a cancellation has to be applied here:
+        otherwise the caller keeps staring at "Cancelling…" and the jobs behind
+        it never move up.
+        """
+        try:
+            self._queue.remove(job)
+        except ValueError:
+            return  # already picked up by the worker, which handles the cancel
+
+        self._pending -= 1
+        job.coro.close()
+        log.info("job %s cancelled while waiting in line", job.name)
+        self._finish(job, exc=JobCancelled("Cancelled while waiting in the queue"))
+        if self._pending == 0 and self._active == 0:
+            self._drained.set()
+        # A queued job never fired "start", but the jobs behind it count on its
+        # "finish" to move up one slot.
+        for callback in list(self._listeners):
+            asyncio.create_task(self._fire(callback, "finish", job.coro))
 
     async def wait_drained(self) -> None:
         """Await until no job is running and none are queued."""
@@ -297,8 +341,8 @@ class JobQueue:
         through the normal path, so its cancel hook fires and the external
         resource (ComfyUI) stops before the process exits.
         """
-        while not self._queue.empty():
-            job: Job = self._queue.get_nowait()
+        while self._queue:
+            job = self._queue.popleft()
             self._pending -= 1
             job.cancel()
             job.coro.close()
