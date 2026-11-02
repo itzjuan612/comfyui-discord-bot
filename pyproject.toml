@@ -8,10 +8,9 @@ target-version = "py311"
 extend-exclude = ["workflows"]
 
 [tool.ruff.lint]
-# Conservative on purpose: the shipped modules have not had a formatting pass
-# yet, so only the rules the code already satisfies (plus import sorting) are
-# enforced. Tighten this list in a dedicated style commit, not inside a logic
-# change.
+# Conservative on purpose: only the rules the code already satisfies (plus
+# import sorting) are enforced, so a tightening pass can land as its own
+# commit. Formatting is enforced separately (`ruff format --check`).
 select = ["E4", "E7", "E9", "F", "I", "UP032", "UP035"]
 ignore = [
     # Imports follow the logger/config setup in core.py, bot.py and diag.py on
@@ -31,4 +30,10 @@ known-first-party = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = """
+-q
+--cov=workflow --cov=job_queue --cov=db
+--cov=generation_store --cov=user_settings --cov=moderation
+--cov-report=term-missing:skip-covered
+--cov-fail-under=80
+"""

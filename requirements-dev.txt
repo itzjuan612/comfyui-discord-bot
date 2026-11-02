@@ -3,4 +3,5 @@
 # Keep ruff in the same minor as the rev in .pre-commit-config.yaml, otherwise
 # the hook and CI can disagree about fixes.
 pytest>=8
+pytest-cov>=6
 ruff>=0.17,<0.18
