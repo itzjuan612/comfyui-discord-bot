@@ -284,6 +284,8 @@ Every job has a budget: one that waits longer than `queued_timeout` is dropped (
 
 Each progress message carries a **Cancel** button. Pressing it drops the job if it is still waiting in line, or cancels the running one (interrupting ComfyUI's sampling). Only the user who started the generation — or an admin — can press it, and it reports "Cancelled" rather than an error.
 
+`/gen_prompt` has the same control: it sits on the "waiting" message, then on the reasoning-effort picker. Cancelling ends the LLM session, drops the picker so a late click cannot start a second one, and unloads the model. When the prompt-composition workflow is running on the ComfyUI lane in `separate` mode, cancelling stops that job too.
+
 ## Storage
 
 Three SQLite databases are created automatically in the project folder:

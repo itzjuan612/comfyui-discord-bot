@@ -824,31 +824,32 @@ class QwenEditButton(Button):
 
 
 class CancelButton(Button):
-    """Stops the generation behind a progress message, queued or running."""
+    """Stops a queued or running job; shared by CancelView and ThinkingView."""
 
-    def __init__(self):
+    def __init__(self, job=None, user_id: int | None = None):
         super().__init__(label="Cancel", emoji="\u23f9\ufe0f", style=discord.ButtonStyle.danger)
+        self.job = job
+        self.user_id = user_id
 
     async def callback(self, interaction: discord.Interaction):
         if await ban_guard(interaction):
             return
-        view: CancelView = self.view
-        if view.user_id and view.user_id != interaction.user.id \
+        if self.user_id and self.user_id != interaction.user.id \
                 and not can_manage(interaction.user.id):
             await interaction.response.send_message(
                 content="\u26a0\ufe0f You can only cancel your own generation.", ephemeral=True
             )
             return
-        if view.job is None or view.job.done:
+        if self.job is None or self.job.done:
             await interaction.response.send_message(
                 content="\u2139\ufe0f That generation already finished.", ephemeral=True
             )
             return
         log.info("Cancel clicked for message %s by %s", interaction.message.id, interaction.user.id)
-        view.job.cancel()
+        self.job.cancel()
         self.disabled = True
         self.label = "Cancelling\u2026"
-        await interaction.response.edit_message(view=view)
+        await interaction.response.edit_message(view=self.view)
 
 
 class CancelView(View):
@@ -862,9 +863,7 @@ class CancelView(View):
 
     def __init__(self, job, user_id: int | None = None):
         super().__init__(timeout=3600)
-        self.job = job
-        self.user_id = user_id
-        self.add_item(CancelButton())
+        self.add_item(CancelButton(job, user_id))
 
 
 class GenerationView(View):
@@ -904,7 +903,7 @@ class ThinkingView(View):
     def __init__(self, chosen_model: str, supported: list[str], prompt: str,
                  megapixels: int, aspect_ratio: str,
                  max_tokens: int | None, temperature: float | None, llm_cfg: dict,
-                 completion, state: dict):
+                 completion, state: dict, job=None, user_id: int | None = None):
         super().__init__(timeout=30)
         self.chosen_model = chosen_model
         self.prompt = prompt
@@ -915,6 +914,7 @@ class ThinkingView(View):
         self.llm_cfg = llm_cfg
         self.completion = completion
         self.state = state
+        self.job = job
         options = [discord.SelectOption(label="API default", value="api_default")]
         options += [discord.SelectOption(label=e, value=e) for e in supported]
         self.add_item(ThinkingSelect(
@@ -923,8 +923,19 @@ class ThinkingView(View):
             min_values=1, max_values=1,
             custom_id="gen_prompt_thinking",
         ))
+        # The picker is the only UI while the session waits for a choice, so
+        # it carries the Cancel button too.
+        if job is not None:
+            self.add_item(CancelButton(job, user_id))
 
     async def handle_select(self, interaction: discord.Interaction, value: str):
+        # The session may already be gone (cancelled, failed, or timed out):
+        # a late click must not start a second, orphaned generation.
+        if self.job is not None and self.job.done:
+            await interaction.response.send_message(
+                content="\u2139\ufe0f This prompt generation already ended.", ephemeral=True
+            )
+            return
         # Record the user's choice and release the session job, which performs
         # the actual generation and unload. Respond so Discord acknowledges
         # the click. The follow-up "Generating prompt\u2026" message is stored

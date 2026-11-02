@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import random
@@ -653,5 +654,12 @@ async def run_text_workflow(file_path: str, patches: dict, target_node: str | No
     # everything already shares one lane.
     from job_queue import job_queue
     if job_queue.mode == "separate":
-        return await job_queue.submit(_run(), lane="comfyui", name="prompt_gen_workflow")
+        job = job_queue.submit(_run(), lane="comfyui", name="prompt_gen_workflow")
+        try:
+            return await job
+        except asyncio.CancelledError:
+            # The caller was cancelled (e.g. /gen_prompt cancelled by the user):
+            # stop the ComfyUI half too instead of composing an unused prompt.
+            job.cancel()
+            raise
     return await _run()

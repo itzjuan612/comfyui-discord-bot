@@ -9,6 +9,7 @@ from discord.ext import commands
 from core import (
     ASPECT_RATIO_CHOICES,
     QueueWaitUpdater,
+    attach_cancel_button,
     ban_guard,
     check_cooldown,
     config,
@@ -18,7 +19,7 @@ from core import (
     reply_error,
     schedule_message_deletion,
 )
-from job_queue import job_queue
+from job_queue import job_error_text, job_queue
 from llm_client import (
     call_llm,
     fetch_llm_models,
@@ -92,6 +93,7 @@ class LLMCog(commands.Cog):
                 view = ThinkingView(
                     chosen_model, supported, prompt, megapixels, aspect_ratio,
                     max_tokens, temperature, llm_cfg, completion, state,
+                    job=state.get("job"), user_id=interaction.user.id,
                 )
                 await msg.edit(
                     content="\U0001f9e0 Select the reasoning effort for " + chosen_model + ":",
@@ -155,10 +157,16 @@ class LLMCog(commands.Cog):
 
             session = _gen_prompt_session()
             fut = job_queue.submit(session, lane="llm", name="gen_prompt")
+            # Set before the session can start (no await in between), so the
+            # picker it builds carries a Cancel button bound to this job.
+            state["job"] = fut
             waiter = QueueWaitUpdater(
                 msg, lane="llm", label="\U0001f9e0 Waiting to generate your prompt (do not delete this message)\u2026"
             )
             waiter.arm(session)
+            # Cancels the session while it is still waiting in line, before the
+            # picker (which has its own Cancel button) is shown.
+            attach_cancel_button(msg, fut, interaction.user.id)
 
             async def _watch_session():
                 # Retrieve the session future so a failure is never silently
@@ -171,9 +179,16 @@ class LLMCog(commands.Cog):
                     log.exception("gen_prompt session failed")
                     waiter.disarm()
                     await reply_error(
-                        interaction, f"\u274c Prompt generation failed: {exc}",
+                        interaction,
+                        job_error_text("\u274c Prompt generation failed:", exc),
                         target=state.get("followup_msg") or msg,
                     )
+                    # The session is gone: drop the picker so a late click
+                    # cannot start a second, orphaned generation.
+                    try:
+                        await msg.edit(view=None)
+                    except Exception:
+                        pass
                     await llm_model_unload(chosen_model)
 
             asyncio.create_task(_watch_session())
