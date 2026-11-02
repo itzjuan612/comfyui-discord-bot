@@ -43,8 +43,9 @@ from ui.views import CheckpointPickerView
 from workflow import run_image
 
 
-async def run_t2i_generation(interaction: discord.Interaction, model: str,
-                             prompt: str, stealth: bool, gen_kwargs: dict):
+async def run_t2i_generation(
+    interaction: discord.Interaction, model: str, prompt: str, stealth: bool, gen_kwargs: dict
+):
     """Shared generation pipeline for the T2I commands (/ideogram, /sdxl, /zimage, /qwen_image).
 
     ``gen_kwargs`` carries the model-specific parameters (plus prompt/seed).
@@ -54,7 +55,8 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
     spec = config["models"][model]["t2i"]
     wait_prefix = job_queue.waiting_prefix("comfyui")
     await interaction.response.send_message(
-        content=wait_prefix + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+        content=wait_prefix
+        + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
         ephemeral=stealth,
     )
     progress_msg = await interaction.original_response()
@@ -62,8 +64,10 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
     log.debug("%s: prompt=%r", model, prompt)
     try:
         job = run_image(
-            spec, on_progress=progress.update,
-            model_key=model, **gen_kwargs,
+            spec,
+            on_progress=progress.update,
+            model_key=model,
+            **gen_kwargs,
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"{model}_t2i")
         progress.arm(job)
@@ -89,8 +93,12 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
             base_lines.append(f"**Output:** {image_resolution(images[0])}")
         elif model == "qwen_image":
             # Both toggles are off unless explicitly enabled.
-            base_lines.append("**Translation:** " + ("on" if gen_kwargs.get("translate") is True else "off"))
-            base_lines.append("**Prompt enhanced:** " + ("on" if gen_kwargs.get("enhance") is True else "off"))
+            base_lines.append(
+                "**Translation:** " + ("on" if gen_kwargs.get("translate") is True else "off")
+            )
+            base_lines.append(
+                "**Prompt enhanced:** " + ("on" if gen_kwargs.get("enhance") is True else "off")
+            )
             res_parts = []
             megapixels = gen_kwargs.get("megapixels")
             if megapixels:
@@ -102,7 +110,9 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
                 base_lines.append("**Resolution:** " + ", ".join(res_parts))
             base_lines.append(f"**Output:** {image_resolution(images[0])}")
         elif model == "flux3_klein":
-            base_lines.append("**Prompt enhanced:** " + ("on" if gen_kwargs.get("enhance") is True else "off"))
+            base_lines.append(
+                "**Prompt enhanced:** " + ("on" if gen_kwargs.get("enhance") is True else "off")
+            )
             if gen_kwargs.get("megapixels"):
                 base_lines.append(f"**Resolution:** {gen_kwargs['megapixels']} MP")
             base_lines.append(f"**Output:** {image_resolution(images[0])}")
@@ -110,20 +120,28 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
             base_lines.append(f"**Resolution:** {image_resolution(images[0])}")
         base_desc = "\n".join(base_lines)
         await deliver_generation(
-            interaction, images=images, meta=meta, base_desc=base_desc,
-            color=int(discord.Color.blue()), spec=spec, model=model,
-            suffix="t2i", stealth=stealth,
+            interaction,
+            images=images,
+            meta=meta,
+            base_desc=base_desc,
+            color=int(discord.Color.blue()),
+            spec=spec,
+            model=model,
+            suffix="t2i",
+            stealth=stealth,
             # seed=None so Retry rolls a fresh seed and produces a new image.
             # sampler/scheduler recorded so an SDXL upscale can reuse them.
-            save_kwargs={**gen_kwargs, "seed": None,
-                         "sampler": meta.get("sampler"),
-                         "scheduler": meta.get("scheduler")},
+            save_kwargs={
+                **gen_kwargs,
+                "seed": None,
+                "sampler": meta.get("sampler"),
+                "scheduler": meta.get("scheduler"),
+            },
         )
     except Exception as exc:
         progress.done = True
         log_job_error(log, "generation failed", exc)
         await reply_error(interaction, job_error_text("\u274c Generation failed:", exc))
-
 
 
 class GenerationCog(commands.Cog):
@@ -141,12 +159,16 @@ class GenerationCog(commands.Cog):
     @app_commands.describe(megapixels="Target resolution in megapixels")
     @app_commands.describe(aspect_ratio="Aspect ratio preset")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
-    async def ideogram(self, interaction: discord.Interaction, prompt: str,
-                       seed: int | None = None,
-                       quality: str | None = None,
-                       megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
-                       aspect_ratio: str | None = None,
-                       stealth: bool | None = None):
+    async def ideogram(
+        self,
+        interaction: discord.Interaction,
+        prompt: str,
+        seed: int | None = None,
+        quality: str | None = None,
+        megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
+        aspect_ratio: str | None = None,
+        stealth: bool | None = None,
+    ):
         if stealth is None:
             stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
         if await ban_guard(interaction):
@@ -159,7 +181,8 @@ class GenerationCog(commands.Cog):
 
         if nsfw_blocked(interaction, prompt):
             await interaction.response.send_message(
-                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
             )
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
@@ -182,8 +205,10 @@ class GenerationCog(commands.Cog):
         }
         await run_t2i_generation(interaction, "ideogram", prompt, stealth, gen_kwargs)
 
-
-    @app_commands.command(name="sdxl", description="Generate an image with SDXL or any checkpoint in models/checkpoints")
+    @app_commands.command(
+        name="sdxl",
+        description="Generate an image with SDXL or any checkpoint in models/checkpoints",
+    )
     @app_commands.autocomplete(model=_sdxl_model_autocomplete)
     @app_commands.describe(prompt="Text prompt")
     @app_commands.describe(model="Checkpoint in models/checkpoints (optional)")
@@ -203,20 +228,24 @@ class GenerationCog(commands.Cog):
     @app_commands.choices(scheduler=SCHEDULER_CHOICES)
     @app_commands.autocomplete(lora1=_sdxl_lora_autocomplete)
     @app_commands.autocomplete(lora2=_sdxl_lora_autocomplete)
-    async def sdxl(self, interaction: discord.Interaction, prompt: str,
-                    model: str | None = None,
-                    negative: str | None = None,
-                    steps: Optional[app_commands.Range[int, 1, 150]] = None,
-                    width: Optional[app_commands.Range[int, 64, 4096]] = None,
-                    height: Optional[app_commands.Range[int, 64, 4096]] = None,
-                    sampler: str | None = None,
-                    scheduler: str | None = None,
-                    cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
-                    lora1: str | None = None,
-                    lora2: str | None = None,
-                    seed: int | None = None,
-                    lora_strength: float | None = None,
-                    stealth: bool | None = None):
+    async def sdxl(
+        self,
+        interaction: discord.Interaction,
+        prompt: str,
+        model: str | None = None,
+        negative: str | None = None,
+        steps: Optional[app_commands.Range[int, 1, 150]] = None,
+        width: Optional[app_commands.Range[int, 64, 4096]] = None,
+        height: Optional[app_commands.Range[int, 64, 4096]] = None,
+        sampler: str | None = None,
+        scheduler: str | None = None,
+        cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+        lora1: str | None = None,
+        lora2: str | None = None,
+        seed: int | None = None,
+        lora_strength: float | None = None,
+        stealth: bool | None = None,
+    ):
         if stealth is None:
             stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
         if await ban_guard(interaction):
@@ -224,7 +253,8 @@ class GenerationCog(commands.Cog):
 
         if nsfw_blocked(interaction, prompt):
             await interaction.response.send_message(
-                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
             )
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
@@ -260,7 +290,9 @@ class GenerationCog(commands.Cog):
                     if saved in available:
                         model = saved
                     else:
-                        log.info("Saved SDXL checkpoint %r not available; using workflow default.", saved)
+                        log.info(
+                            "Saved SDXL checkpoint %r not available; using workflow default.", saved
+                        )
 
         # Optional checkpoint selection: any file in ComfyUI's models/checkpoints
         # folder can be used instead of the workflow's default checkpoint.
@@ -313,7 +345,6 @@ class GenerationCog(commands.Cog):
         }
         await run_t2i_generation(interaction, "sdxl", prompt, stealth, gen_kwargs)
 
-
     @app_commands.command(name="zimage", description="Generate an image with Z-Image")
     @app_commands.autocomplete(model=_zimage_model_autocomplete)
     @app_commands.choices(sampler=SAMPLER_CHOICES)
@@ -335,21 +366,25 @@ class GenerationCog(commands.Cog):
     @app_commands.describe(seed="Seed (optional)")
     @app_commands.describe(batch_size="Number of images to generate (optional)")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
-    async def zimage(self, interaction: discord.Interaction, prompt: str,
-                     model: str | None = None,
-                     negative: str | None = None,
-                     steps: Optional[app_commands.Range[int, 1, 150]] = None,
-                     cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
-                     width: Optional[app_commands.Range[int, 64, 4096]] = None,
-                     height: Optional[app_commands.Range[int, 64, 4096]] = None,
-                     sampler: str | None = None,
-                     scheduler: str | None = None,
-                     lora1: str | None = None,
-                     lora2: str | None = None,
-                     lora_strength: float | None = None,
-                     seed: int | None = None,
-                     batch_size: Optional[app_commands.Range[int, 1, 8]] = None,
-                     stealth: bool | None = None):
+    async def zimage(
+        self,
+        interaction: discord.Interaction,
+        prompt: str,
+        model: str | None = None,
+        negative: str | None = None,
+        steps: Optional[app_commands.Range[int, 1, 150]] = None,
+        cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+        width: Optional[app_commands.Range[int, 64, 4096]] = None,
+        height: Optional[app_commands.Range[int, 64, 4096]] = None,
+        sampler: str | None = None,
+        scheduler: str | None = None,
+        lora1: str | None = None,
+        lora2: str | None = None,
+        lora_strength: float | None = None,
+        seed: int | None = None,
+        batch_size: Optional[app_commands.Range[int, 1, 8]] = None,
+        stealth: bool | None = None,
+    ):
         if stealth is None:
             stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
         if await ban_guard(interaction):
@@ -357,7 +392,8 @@ class GenerationCog(commands.Cog):
 
         if nsfw_blocked(interaction, prompt):
             await interaction.response.send_message(
-                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
             )
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
@@ -394,7 +430,9 @@ class GenerationCog(commands.Cog):
                     if saved in available:
                         model = saved
                     else:
-                        log.info("Saved Z-Image model %r not available; using workflow default.", saved)
+                        log.info(
+                            "Saved Z-Image model %r not available; using workflow default.", saved
+                        )
 
         # Optional diffusion model selection: any file in ComfyUI's
         # models/diffusion_models folder can be used instead of the workflow's
@@ -449,7 +487,6 @@ class GenerationCog(commands.Cog):
         }
         await run_t2i_generation(interaction, "zimage", prompt, stealth, gen_kwargs)
 
-
     @app_commands.command(name="qwen_image", description="Generate an image with Qwen Image 2.1")
     @app_commands.choices(sampler=SAMPLER_CHOICES)
     @app_commands.choices(scheduler=SCHEDULER_CHOICES)
@@ -457,32 +494,40 @@ class GenerationCog(commands.Cog):
     @app_commands.autocomplete(lora=_sdxl_lora_autocomplete)
     @app_commands.describe(prompt="Text prompt")
     @app_commands.describe(negative="Negative prompt")
-    @app_commands.describe(translate="Translate the prompt to English with Google Translate (off by default)")
+    @app_commands.describe(
+        translate="Translate the prompt to English with Google Translate (off by default)"
+    )
     @app_commands.describe(steps="Sampling steps")
     @app_commands.describe(megapixels="Target resolution in megapixels")
     @app_commands.describe(aspect_ratio="Aspect ratio preset")
     @app_commands.describe(sampler="Sampler (optional)")
     @app_commands.describe(scheduler="Scheduler (optional)")
     @app_commands.describe(cfg="CFG guidance scale")
-    @app_commands.describe(lora="LoRA file (optional; defaults to the config LoRA, type none to disable)")
+    @app_commands.describe(
+        lora="LoRA file (optional; defaults to the config LoRA, type none to disable)"
+    )
     @app_commands.describe(lora_strength="LoRA strength (optional, default 1.0)")
     @app_commands.describe(seed="Seed (optional)")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
     @app_commands.describe(enhance="Rewrite the prompt with the Qwen 8B enhancer (off by default)")
-    async def qwen_image(self, interaction: discord.Interaction, prompt: str,
-                         negative: str | None = None,
-                         translate: bool | None = None,
-                         enhance: bool | None = None,
-                         steps: Optional[app_commands.Range[int, 1, 150]] = None,
-                         megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
-                         aspect_ratio: str | None = None,
-                         sampler: str | None = None,
-                         scheduler: str | None = None,
-                         cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
-                         lora: str | None = None,
-                         lora_strength: float | None = None,
-                         seed: int | None = None,
-                         stealth: bool | None = None):
+    async def qwen_image(
+        self,
+        interaction: discord.Interaction,
+        prompt: str,
+        negative: str | None = None,
+        translate: bool | None = None,
+        enhance: bool | None = None,
+        steps: Optional[app_commands.Range[int, 1, 150]] = None,
+        megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
+        aspect_ratio: str | None = None,
+        sampler: str | None = None,
+        scheduler: str | None = None,
+        cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+        lora: str | None = None,
+        lora_strength: float | None = None,
+        seed: int | None = None,
+        stealth: bool | None = None,
+    ):
         if stealth is None:
             stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
         if await ban_guard(interaction):
@@ -495,7 +540,8 @@ class GenerationCog(commands.Cog):
 
         if nsfw_blocked(interaction, prompt):
             await interaction.response.send_message(
-                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
             )
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
@@ -535,28 +581,33 @@ class GenerationCog(commands.Cog):
         }
         await run_t2i_generation(interaction, "qwen_image", prompt, stealth, gen_kwargs)
 
-
     @app_commands.command(name="flux_image", description="Generate an image with Flux 3 Klein")
     @app_commands.choices(sampler=SAMPLER_CHOICES)
     @app_commands.choices(scheduler=SCHEDULER_CHOICES)
     @app_commands.describe(prompt="Text prompt")
     @app_commands.describe(negative="Negative prompt (empty = the workflow's default)")
-    @app_commands.describe(enhance="Rewrite the prompt with the Qwen 3.5 9B enhancer (off by default)")
+    @app_commands.describe(
+        enhance="Rewrite the prompt with the Qwen 3.5 9B enhancer (off by default)"
+    )
     @app_commands.describe(cfg="CFG guidance scale")
     @app_commands.describe(steps="Sampling steps")
     @app_commands.describe(sampler="Sampler (optional)")
     @app_commands.describe(scheduler="Scheduler (optional)")
     @app_commands.describe(megapixels="Target resolution in megapixels")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
-    async def flux_image(self, interaction: discord.Interaction, prompt: str,
-                         negative: str | None = None,
-                         enhance: bool | None = None,
-                         cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
-                         steps: Optional[app_commands.Range[int, 1, 150]] = None,
-                         sampler: str | None = None,
-                         scheduler: str | None = None,
-                         megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
-                         stealth: bool | None = None):
+    async def flux_image(
+        self,
+        interaction: discord.Interaction,
+        prompt: str,
+        negative: str | None = None,
+        enhance: bool | None = None,
+        cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+        steps: Optional[app_commands.Range[int, 1, 150]] = None,
+        sampler: str | None = None,
+        scheduler: str | None = None,
+        megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
+        stealth: bool | None = None,
+    ):
         if stealth is None:
             stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
         if await ban_guard(interaction):
@@ -569,7 +620,8 @@ class GenerationCog(commands.Cog):
 
         if nsfw_blocked(interaction, prompt):
             await interaction.response.send_message(
-                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
             )
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
@@ -601,7 +653,6 @@ class GenerationCog(commands.Cog):
         }
         await run_t2i_generation(interaction, "flux3_klein", prompt, stealth, gen_kwargs)
 
-
     @app_commands.command(name="upscale", description="Upscale an image from your gallery")
     @app_commands.choices(model=UPSCALE_CHOICES)
     @app_commands.describe(image="Image to upscale (attach from your gallery)")
@@ -614,13 +665,19 @@ class GenerationCog(commands.Cog):
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
     @app_commands.choices(sampler=SAMPLER_CHOICES)
     @app_commands.choices(scheduler=SCHEDULER_CHOICES)
-    async def upscale(self, interaction: discord.Interaction, model: str, image: discord.Attachment,
-                      prompt: str | None = None,
-                      negative: str | None = None, strength: float | None = None,
-                      sampler: str | None = None,
-                      scheduler: str | None = None,
-                      scale: Optional[app_commands.Range[float, 1.0, 4.0]] = None,
-                      stealth: bool | None = None):
+    async def upscale(
+        self,
+        interaction: discord.Interaction,
+        model: str,
+        image: discord.Attachment,
+        prompt: str | None = None,
+        negative: str | None = None,
+        strength: float | None = None,
+        sampler: str | None = None,
+        scheduler: str | None = None,
+        scale: Optional[app_commands.Range[float, 1.0, 4.0]] = None,
+        stealth: bool | None = None,
+    ):
         if stealth is None:
             stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
         if await ban_guard(interaction):
@@ -635,7 +692,8 @@ class GenerationCog(commands.Cog):
 
         if nsfw_blocked(interaction, prompt):
             await interaction.response.send_message(
-                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
             )
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
@@ -681,24 +739,41 @@ class GenerationCog(commands.Cog):
                 await msg.edit(
                     content="\u2705 Image uploaded. Pick a checkpoint to upscale with:",
                     view=CheckpointPickerView(
-                        spec, model, uploaded_name, input_longest_side, stealth,
-                        prompt, negative, strength, scale, checkpoints,
-                        sampler, scheduler,
+                        spec,
+                        model,
+                        uploaded_name,
+                        input_longest_side,
+                        stealth,
+                        prompt,
+                        negative,
+                        strength,
+                        scale,
+                        checkpoints,
+                        sampler,
+                        scheduler,
                     ),
                 )
                 return
 
             await interaction.response.send_message(
-                content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+                content=job_queue.waiting_prefix("comfyui")
+                + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
                 ephemeral=stealth,
             )
             progress_msg = await interaction.original_response()
-            progress = ProgressUpdater(progress_msg, lane="comfyui",
-                                        label="\U0001f3a8 Upscaling image\u2026")
+            progress = ProgressUpdater(
+                progress_msg, lane="comfyui", label="\U0001f3a8 Upscaling image\u2026"
+            )
             job = run_image(
-                spec, on_progress=progress.update, model_key=model, prompt=prompt,
-                negative=negative, strength=strength, image_filename=uploaded_name,
-                scale=scale, input_longest_side=input_longest_side,
+                spec,
+                on_progress=progress.update,
+                model_key=model,
+                prompt=prompt,
+                negative=negative,
+                strength=strength,
+                image_filename=uploaded_name,
+                scale=scale,
+                input_longest_side=input_longest_side,
             )
             fut = job_queue.submit(job, lane="comfyui", name=f"{model}_upscale")
             progress.arm(job)
@@ -711,13 +786,24 @@ class GenerationCog(commands.Cog):
                 + f"\n**Resolution:** {image_resolution(images[0])}"
             )
             await deliver_generation(
-                interaction, images=images, meta=meta, base_desc=base_desc,
-                color=int(discord.Color.green()), spec=spec, model=model,
-                suffix="upscale", stealth=stealth,
+                interaction,
+                images=images,
+                meta=meta,
+                base_desc=base_desc,
+                color=int(discord.Color.green()),
+                spec=spec,
+                model=model,
+                suffix="upscale",
+                stealth=stealth,
                 # Retries reuse the uploaded input image and roll a fresh seed.
-                save_kwargs={"prompt": prompt, "negative": negative, "strength": strength,
-                             "image_filename": uploaded_name, "scale": scale,
-                             "input_longest_side": input_longest_side},
+                save_kwargs={
+                    "prompt": prompt,
+                    "negative": negative,
+                    "strength": strength,
+                    "image_filename": uploaded_name,
+                    "scale": scale,
+                    "input_longest_side": input_longest_side,
+                },
             )
         except Exception as exc:
             # progress is only bound on the non-sdxl path; guard so an error in the
@@ -729,8 +815,10 @@ class GenerationCog(commands.Cog):
             log_job_error(log, "upscale failed", exc)
             await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc))
 
-
-    @app_commands.command(name="flux_edit", description="Edit one image (or combine two) into a new image using Flux 3 Klein")
+    @app_commands.command(
+        name="flux_edit",
+        description="Edit one image (or combine two) into a new image using Flux 3 Klein",
+    )
     @app_commands.choices(sampler=SAMPLER_CHOICES)
     @app_commands.choices(scheduler=SCHEDULER_CHOICES)
     @app_commands.describe(image="First input image (attach from your gallery)")
@@ -743,16 +831,20 @@ class GenerationCog(commands.Cog):
     @app_commands.describe(scheduler="Scheduler (optional)")
     @app_commands.describe(megapixels="Target resolution in megapixels (optional)")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
-    async def flux_edit(self, interaction: discord.Interaction,
-                      image: discord.Attachment, prompt: str,
-                      image2: discord.Attachment | None = None,
-                      negative: str | None = None,
-                      cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
-                      steps: Optional[app_commands.Range[int, 1, 150]] = None,
-                      sampler: str | None = None,
-                      scheduler: str | None = None,
-                      megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
-                      stealth: bool | None = None):
+    async def flux_edit(
+        self,
+        interaction: discord.Interaction,
+        image: discord.Attachment,
+        prompt: str,
+        image2: discord.Attachment | None = None,
+        negative: str | None = None,
+        cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+        steps: Optional[app_commands.Range[int, 1, 150]] = None,
+        sampler: str | None = None,
+        scheduler: str | None = None,
+        megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
+        stealth: bool | None = None,
+    ):
         if stealth is None:
             stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
         if await ban_guard(interaction):
@@ -765,14 +857,16 @@ class GenerationCog(commands.Cog):
 
         if nsfw_blocked(interaction, prompt):
             await interaction.response.send_message(
-                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
             )
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
             return
 
         await interaction.response.send_message(
-            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui")
+            + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
         progress_msg = await interaction.original_response()
@@ -785,7 +879,9 @@ class GenerationCog(commands.Cog):
         if spec is None:
             progress.done = True
             progress.disarm()
-            await reply_error(interaction, "\u274c Workflow 'i2i' is not configured.", target=progress_msg)
+            await reply_error(
+                interaction, "\u274c Workflow 'i2i' is not configured.", target=progress_msg
+            )
             return
 
         # Download and upload the input image(s) to ComfyUI.
@@ -800,7 +896,11 @@ class GenerationCog(commands.Cog):
             progress.done = True
             progress.disarm()
             log.exception("flux_edit download/upload failed")
-            await reply_error(interaction, f"\u274c Could not process the input images: {exc}", target=progress_msg)
+            await reply_error(
+                interaction,
+                f"\u274c Could not process the input images: {exc}",
+                target=progress_msg,
+            )
             return
 
         # Fall back to the user's saved flux defaults for any parameter left unset.
@@ -841,24 +941,39 @@ class GenerationCog(commands.Cog):
             progress.done = True
             display_model = meta.get("ckpt_name") or model
             workflow_label = "2 images (combine)" if uploaded2 is not None else "1 image (edit)"
-            base_desc = "\n".join([
-                f"**Model:** {display_model}",
-                f"**Workflow:** {workflow_label}",
-                f"**Prompt:** {prompt[:3800]}",
-                f"**Resolution:** {image_resolution(images[0])}",
-            ])
+            base_desc = "\n".join(
+                [
+                    f"**Model:** {display_model}",
+                    f"**Workflow:** {workflow_label}",
+                    f"**Prompt:** {prompt[:3800]}",
+                    f"**Resolution:** {image_resolution(images[0])}",
+                ]
+            )
             await deliver_generation(
-                interaction, images=images, meta=meta, base_desc=base_desc,
-                color=int(discord.Color.orange()), spec=spec, model=model,
-                suffix="i2i", stealth=stealth,
+                interaction,
+                images=images,
+                meta=meta,
+                base_desc=base_desc,
+                color=int(discord.Color.orange()),
+                spec=spec,
+                model=model,
+                suffix="i2i",
+                stealth=stealth,
                 save_kwargs={**gen_kwargs, "seed": None},
             )
         except Exception as exc:
             progress.done = True
             log_job_error(log, "flux_edit failed", exc)
-            await reply_error(interaction, job_error_text("\u274c Image-to-image failed:", exc), target=progress_msg)
+            await reply_error(
+                interaction,
+                job_error_text("\u274c Image-to-image failed:", exc),
+                target=progress_msg,
+            )
 
-    @app_commands.command(name="qwen_edit", description="Edit one image (or combine two) into a new image using Qwen Image 2.1")
+    @app_commands.command(
+        name="qwen_edit",
+        description="Edit one image (or combine two) into a new image using Qwen Image 2.1",
+    )
     @app_commands.choices(sampler=SAMPLER_CHOICES)
     @app_commands.choices(scheduler=SCHEDULER_CHOICES)
     @app_commands.autocomplete(lora=_sdxl_lora_autocomplete)
@@ -869,19 +984,25 @@ class GenerationCog(commands.Cog):
     @app_commands.describe(cfg="CFG guidance scale (optional)")
     @app_commands.describe(sampler="Sampler (optional)")
     @app_commands.describe(scheduler="Scheduler (optional)")
-    @app_commands.describe(lora="LoRA file (optional; defaults to the config LoRA, type none to disable)")
+    @app_commands.describe(
+        lora="LoRA file (optional; defaults to the config LoRA, type none to disable)"
+    )
     @app_commands.describe(lora_strength="LoRA strength (optional, default 1.0)")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
-    async def qwen_edit(self, interaction: discord.Interaction,
-                        image: discord.Attachment, prompt: str,
-                        image2: discord.Attachment | None = None,
-                        steps: Optional[app_commands.Range[int, 1, 150]] = None,
-                        cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
-                        sampler: str | None = None,
-                        scheduler: str | None = None,
-                        lora: str | None = None,
-                        lora_strength: float | None = None,
-                        stealth: bool | None = None):
+    async def qwen_edit(
+        self,
+        interaction: discord.Interaction,
+        image: discord.Attachment,
+        prompt: str,
+        image2: discord.Attachment | None = None,
+        steps: Optional[app_commands.Range[int, 1, 150]] = None,
+        cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+        sampler: str | None = None,
+        scheduler: str | None = None,
+        lora: str | None = None,
+        lora_strength: float | None = None,
+        stealth: bool | None = None,
+    ):
         if stealth is None:
             stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
         if await ban_guard(interaction):
@@ -894,14 +1015,16 @@ class GenerationCog(commands.Cog):
 
         if nsfw_blocked(interaction, prompt):
             await interaction.response.send_message(
-                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.",
+                ephemeral=True,
             )
             msg = await interaction.original_response()
             schedule_message_deletion(msg)
             return
 
         await interaction.response.send_message(
-            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui")
+            + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
         progress_msg = await interaction.original_response()
@@ -913,7 +1036,9 @@ class GenerationCog(commands.Cog):
         if spec is None:
             progress.done = True
             progress.disarm()
-            await reply_error(interaction, "\u274c Workflow 'i2i' is not configured.", target=progress_msg)
+            await reply_error(
+                interaction, "\u274c Workflow 'i2i' is not configured.", target=progress_msg
+            )
             return
 
         # Download and upload the input image(s) to ComfyUI.
@@ -928,7 +1053,11 @@ class GenerationCog(commands.Cog):
             progress.done = True
             progress.disarm()
             log.exception("qwen_edit download/upload failed")
-            await reply_error(interaction, f"\u274c Could not process the input images: {exc}", target=progress_msg)
+            await reply_error(
+                interaction,
+                f"\u274c Could not process the input images: {exc}",
+                target=progress_msg,
+            )
             return
 
         # Fall back to the user's shared Qwen defaults for any parameter left unset.
@@ -970,23 +1099,36 @@ class GenerationCog(commands.Cog):
             progress.done = True
             display_model = meta.get("ckpt_name") or model
             workflow_label = "2 images (combine)" if uploaded2 is not None else "1 image (edit)"
-            base_desc = "\n".join([
-                f"**Model:** {display_model}",
-                f"**Workflow:** {workflow_label}",
-                f"**Prompt:** {prompt[:3800]}",
-                f"**Resolution:** {image_resolution(images[0])}",
-            ])
+            base_desc = "\n".join(
+                [
+                    f"**Model:** {display_model}",
+                    f"**Workflow:** {workflow_label}",
+                    f"**Prompt:** {prompt[:3800]}",
+                    f"**Resolution:** {image_resolution(images[0])}",
+                ]
+            )
             await deliver_generation(
-                interaction, images=images, meta=meta, base_desc=base_desc,
-                color=int(discord.Color.purple()), spec=spec, model=model,
-                suffix="i2i", stealth=stealth,
+                interaction,
+                images=images,
+                meta=meta,
+                base_desc=base_desc,
+                color=int(discord.Color.purple()),
+                spec=spec,
+                model=model,
+                suffix="i2i",
+                stealth=stealth,
                 save_kwargs={**gen_kwargs, "seed": None},
             )
         except Exception as exc:
             progress.done = True
             log_job_error(log, "qwen_edit failed", exc)
-            await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
-    @app_commands.command(name="flush", description="Unload all models and execution cache from ComfyUI")
+            await reply_error(
+                interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg
+            )
+
+    @app_commands.command(
+        name="flush", description="Unload all models and execution cache from ComfyUI"
+    )
     async def flush(self, interaction: discord.Interaction):
         if not can_manage(interaction.user.id):
             await interaction.response.send_message(
@@ -1009,7 +1151,9 @@ class GenerationCog(commands.Cog):
             # so /flush never interrupts a running job.
             await job_queue.wait_drained()
             await comfy.free_memory()
-            await interaction.edit_original_response(content="\U0001f9f9 Done. All models and execution cache have been unloaded from ComfyUI.")
+            await interaction.edit_original_response(
+                content="\U0001f9f9 Done. All models and execution cache have been unloaded from ComfyUI."
+            )
         except ComfyUIError as exc:
             await reply_error(interaction, f"\u274c Flush failed: {exc}")
 

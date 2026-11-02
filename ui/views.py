@@ -79,14 +79,17 @@ class RetryButton(Button):
             return
         stealth = bool(params.get("stealth", False))
         await interaction.response.send_message(
-            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui")
+            + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
         progress_msg = await interaction.original_response()
         progress = ProgressUpdater(progress_msg, lane="comfyui")
         job = run_image(
-            params["spec"], on_progress=progress.update,
-            model_key=params["model"], **params["kwargs"]
+            params["spec"],
+            on_progress=progress.update,
+            model_key=params["model"],
+            **params["kwargs"],
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"retry_{params['model']}")
         progress.arm(job)
@@ -98,16 +101,23 @@ class RetryButton(Button):
             # deliver_generation persists the params under the new message id,
             # tagged with the clicking user so only they can delete the output.
             await deliver_generation(
-                interaction, images=images, meta=meta,
-                base_desc=params["embed_desc"], color=params["embed_color"],
-                spec=params["spec"], model=params["model"],
-                suffix=params["suffix"], stealth=stealth,
+                interaction,
+                images=images,
+                meta=meta,
+                base_desc=params["embed_desc"],
+                color=params["embed_color"],
+                spec=params["spec"],
+                model=params["model"],
+                suffix=params["suffix"],
+                stealth=stealth,
                 save_kwargs=params["kwargs"],
             )
         except Exception as exc:
             progress.done = True
             log_job_error(log, "retry failed", exc)
-            await interaction.edit_original_response(content=job_error_text("\u274c Retry failed:", exc))
+            await interaction.edit_original_response(
+                content=job_error_text("\u274c Retry failed:", exc)
+            )
             schedule_original_response_deletion(interaction)
 
 
@@ -122,7 +132,11 @@ class DeleteButton(Button):
         params = generation_store.get(interaction.message.id)
         if params is not None:
             owner = params.get("user_id")
-            if owner is not None and owner != interaction.user.id and not can_manage(interaction.user.id):
+            if (
+                owner is not None
+                and owner != interaction.user.id
+                and not can_manage(interaction.user.id)
+            ):
                 await interaction.response.send_message(
                     content="\u26a0\ufe0f You can only delete images you generated yourself.",
                     ephemeral=True,
@@ -175,15 +189,21 @@ class UpscaleModelButton(Button):
             return
         await interaction.response.defer(ephemeral=stealth)
         progress_msg = await interaction.followup.send(
-            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui")
+            + "\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
-        progress = ProgressUpdater(progress_msg, lane="comfyui",
-                                   label="\U0001f3a8 Upscaling image\u2026")
+        progress = ProgressUpdater(
+            progress_msg, lane="comfyui", label="\U0001f3a8 Upscaling image\u2026"
+        )
         spec = config["models"].get(model, {}).get("upscale")
         if spec is None:
             progress.done = True
-            await reply_error(interaction, f"\u274c Model {model!r} has no upscaling workflow.", target=progress_msg)
+            await reply_error(
+                interaction,
+                f"\u274c Model {model!r} has no upscaling workflow.",
+                target=progress_msg,
+            )
             return
         settings = user_settings.get_settings(interaction.user.id)
         negative = settings["negative_prompt"] or None
@@ -194,11 +214,18 @@ class UpscaleModelButton(Button):
         sampler = view.sampler if model == "sdxl" else None
         scheduler = view.scheduler if model == "sdxl" else None
         job = run_image(
-            spec, on_progress=progress.update, model_key=model, prompt=None,
-            negative=negative, strength=None,
-            image_filename=view.uploaded_name, scale=2,
+            spec,
+            on_progress=progress.update,
+            model_key=model,
+            prompt=None,
+            negative=negative,
+            strength=None,
+            image_filename=view.uploaded_name,
+            scale=2,
             input_longest_side=view.input_longest_side,
-            ckpt_name=ckpt_name, sampler=sampler, scheduler=scheduler,
+            ckpt_name=ckpt_name,
+            sampler=sampler,
+            scheduler=scheduler,
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"{model}_upscale")
         progress.arm(job)
@@ -214,20 +241,35 @@ class UpscaleModelButton(Button):
             # Edit the progress (follow-up) message, NOT the ephemeral
             # model-picker message, so the output is visible to everyone.
             await deliver_generation(
-                interaction, images=images, meta=meta, base_desc=base_desc,
-                color=int(discord.Color.green()), spec=spec, model=model,
-                suffix="upscale", stealth=stealth, target=progress_msg,
+                interaction,
+                images=images,
+                meta=meta,
+                base_desc=base_desc,
+                color=int(discord.Color.green()),
+                spec=spec,
+                model=model,
+                suffix="upscale",
+                stealth=stealth,
+                target=progress_msg,
                 # Retries reuse the uploaded input image and roll a fresh seed.
-                save_kwargs={"prompt": None, "negative": negative, "strength": None,
-                             "image_filename": view.uploaded_name, "scale": 2,
-                             "input_longest_side": view.input_longest_side,
-                             "ckpt_name": ckpt_name, "sampler": sampler,
-                             "scheduler": scheduler},
+                save_kwargs={
+                    "prompt": None,
+                    "negative": negative,
+                    "strength": None,
+                    "image_filename": view.uploaded_name,
+                    "scale": 2,
+                    "input_longest_side": view.input_longest_side,
+                    "ckpt_name": ckpt_name,
+                    "sampler": sampler,
+                    "scheduler": scheduler,
+                },
             )
         except Exception as exc:
             progress.done = True
             log_job_error(log, "upscale failed", exc)
-            await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc), target=progress_msg)
+            await reply_error(
+                interaction, job_error_text("\u274c Upscaling failed:", exc), target=progress_msg
+            )
 
 
 class UpscaleModelView(View):
@@ -237,9 +279,16 @@ class UpscaleModelView(View):
     model button can run the upscale without re-downloading the image.
     """
 
-    def __init__(self, uploaded_name: str, input_longest_side: int, stealth: bool = False,
-                 source_model: str | None = None, ckpt_name: str | None = None,
-                 sampler: str | None = None, scheduler: str | None = None):
+    def __init__(
+        self,
+        uploaded_name: str,
+        input_longest_side: int,
+        stealth: bool = False,
+        source_model: str | None = None,
+        ckpt_name: str | None = None,
+        sampler: str | None = None,
+        scheduler: str | None = None,
+    ):
         super().__init__(timeout=300)
         self.uploaded_name = uploaded_name
         self.input_longest_side = input_longest_side
@@ -257,7 +306,9 @@ class UpscaleModelView(View):
 
     async def on_timeout(self):
         try:
-            await self.message.edit(content="\u23f3 Upscale model selection expired; upscale cancelled.")
+            await self.message.edit(
+                content="\u23f3 Upscale model selection expired; upscale cancelled."
+            )
         except Exception:
             pass
 
@@ -275,12 +326,21 @@ class CheckpointPickerView(View):
     upscale without re-downloading the image.
     """
 
-    def __init__(self, spec: dict, model_key: str, uploaded_name: str,
-                 input_longest_side: int | None, stealth: bool,
-                 prompt: str | None, negative: str | None,
-                 strength: float | None, scale: float | None,
-                 checkpoints: list[str],
-                 sampler: str | None = None, scheduler: str | None = None):
+    def __init__(
+        self,
+        spec: dict,
+        model_key: str,
+        uploaded_name: str,
+        input_longest_side: int | None,
+        stealth: bool,
+        prompt: str | None,
+        negative: str | None,
+        strength: float | None,
+        scale: float | None,
+        checkpoints: list[str],
+        sampler: str | None = None,
+        scheduler: str | None = None,
+    ):
         super().__init__(timeout=300)
         self.spec = spec
         self.model_key = model_key
@@ -297,12 +357,15 @@ class CheckpointPickerView(View):
         # fallback to an available SDXL checkpoint in run_image).
         options = [discord.SelectOption(label="Default (workflow checkpoint)", value="default")]
         options += [discord.SelectOption(label=c, value=c) for c in checkpoints[:24]]
-        self.add_item(CheckpointSelect(
-            placeholder="Select a checkpoint",
-            options=options,
-            min_values=1, max_values=1,
-            custom_id="upscale_checkpoint",
-        ))
+        self.add_item(
+            CheckpointSelect(
+                placeholder="Select a checkpoint",
+                options=options,
+                min_values=1,
+                max_values=1,
+                custom_id="upscale_checkpoint",
+            )
+        )
 
     async def handle_select(self, interaction: discord.Interaction, value: str):
         if await ban_guard(interaction):
@@ -325,17 +388,26 @@ class CheckpointPickerView(View):
         # not re-check (re-checking would always fail and block the run).
         await interaction.response.defer(ephemeral=self.stealth)
         progress_msg = await interaction.followup.send(
-            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui")
+            + "\U0001f3a8 Upscaling image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=self.stealth,
         )
-        progress = ProgressUpdater(progress_msg, lane="comfyui",
-                                   label="\U0001f3a8 Upscaling image\u2026")
+        progress = ProgressUpdater(
+            progress_msg, lane="comfyui", label="\U0001f3a8 Upscaling image\u2026"
+        )
         job = run_image(
-            self.spec, on_progress=progress.update, model_key=self.model_key,
-            prompt=self.prompt, negative=self.negative, strength=self.strength,
-            image_filename=self.uploaded_name, scale=self.scale,
+            self.spec,
+            on_progress=progress.update,
+            model_key=self.model_key,
+            prompt=self.prompt,
+            negative=self.negative,
+            strength=self.strength,
+            image_filename=self.uploaded_name,
+            scale=self.scale,
             input_longest_side=self.input_longest_side,
-            ckpt_name=ckpt_name, sampler=self.sampler, scheduler=self.scheduler,
+            ckpt_name=ckpt_name,
+            sampler=self.sampler,
+            scheduler=self.scheduler,
         )
         fut = job_queue.submit(job, lane="comfyui", name=f"{self.model_key}_upscale")
         progress.arm(job)
@@ -351,27 +423,40 @@ class CheckpointPickerView(View):
                 + f"\n**Resolution:** {image_resolution(images[0])}"
             )
             await deliver_generation(
-                interaction, images=images, meta=meta, base_desc=base_desc,
-                color=int(discord.Color.green()), spec=self.spec,
-                model=self.model_key, suffix="upscale", stealth=self.stealth,
+                interaction,
+                images=images,
+                meta=meta,
+                base_desc=base_desc,
+                color=int(discord.Color.green()),
+                spec=self.spec,
+                model=self.model_key,
+                suffix="upscale",
+                stealth=self.stealth,
                 target=progress_msg,
-                save_kwargs={"prompt": self.prompt, "negative": self.negative,
-                             "strength": self.strength,
-                             "image_filename": self.uploaded_name,
-                             "scale": self.scale,
-                             "input_longest_side": self.input_longest_side,
-                             "ckpt_name": ckpt_name,
-                             "sampler": self.sampler,
-                             "scheduler": self.scheduler},
+                save_kwargs={
+                    "prompt": self.prompt,
+                    "negative": self.negative,
+                    "strength": self.strength,
+                    "image_filename": self.uploaded_name,
+                    "scale": self.scale,
+                    "input_longest_side": self.input_longest_side,
+                    "ckpt_name": ckpt_name,
+                    "sampler": self.sampler,
+                    "scheduler": self.scheduler,
+                },
             )
         except Exception as exc:
             progress.done = True
             log_job_error(log, "checkpoint upscale failed", exc)
-            await reply_error(interaction, job_error_text("\u274c Upscaling failed:", exc), target=progress_msg)
+            await reply_error(
+                interaction, job_error_text("\u274c Upscaling failed:", exc), target=progress_msg
+            )
 
     async def on_timeout(self):
         try:
-            await self.message.edit(content="\u23f3 Checkpoint selection expired; upscale cancelled.")
+            await self.message.edit(
+                content="\u23f3 Checkpoint selection expired; upscale cancelled."
+            )
         except Exception:
             pass
 
@@ -415,7 +500,8 @@ class UpscaleButton(Button):
         scheduler = saved_kwargs.get("scheduler")
         log.info("Upscale 2x clicked for message %s", interaction.message.id)
         image_attachments = [
-            a for a in interaction.message.attachments
+            a
+            for a in interaction.message.attachments
             if a.content_type and a.content_type.startswith("image/")
         ]
         if not image_attachments:
@@ -439,9 +525,13 @@ class UpscaleButton(Button):
             content="Which model should upscale this image?",
             ephemeral=True,
             view=UpscaleModelView(
-                uploaded_name=uploaded_name, input_longest_side=input_longest_side,
-                stealth=stealth, source_model=source_model, ckpt_name=ckpt_name,
-                sampler=sampler, scheduler=scheduler,
+                uploaded_name=uploaded_name,
+                input_longest_side=input_longest_side,
+                stealth=stealth,
+                source_model=source_model,
+                ckpt_name=ckpt_name,
+                sampler=sampler,
+                scheduler=scheduler,
             ),
         )
 
@@ -461,23 +551,33 @@ class FluxEditModal(Modal):
         super().__init__(title="Flux Edit")
         self.default_stealth = default_stealth
         self.prompt_input = TextInput(
-            label="Prompt", style=TextStyle.paragraph,
-            placeholder="Describe the edit", required=True,
+            label="Prompt",
+            style=TextStyle.paragraph,
+            placeholder="Describe the edit",
+            required=True,
         )
         self.steps_input = TextInput(
-            label="Steps (optional)", style=TextStyle.short, required=False,
+            label="Steps (optional)",
+            style=TextStyle.short,
+            required=False,
             placeholder="e.g. 30",
         )
         self.sampler_input = TextInput(
-            label="Sampler (optional)", style=TextStyle.short, required=False,
+            label="Sampler (optional)",
+            style=TextStyle.short,
+            required=False,
             placeholder="e.g. euler",
         )
         self.scheduler_input = TextInput(
-            label="Scheduler (optional)", style=TextStyle.short, required=False,
+            label="Scheduler (optional)",
+            style=TextStyle.short,
+            required=False,
             placeholder="e.g. simple",
         )
         self.privacy_input = TextInput(
-            label="Privacy (optional)", style=TextStyle.short, required=False,
+            label="Privacy (optional)",
+            style=TextStyle.short,
+            required=False,
             placeholder="stealth = only you see it; public = visible to everyone",
         )
         self.add_item(self.prompt_input)
@@ -495,7 +595,8 @@ class FluxEditModal(Modal):
             stealth = self.default_stealth
         else:
             await interaction.response.send_message(
-                content="\u26a0\ufe0f Privacy must be \u201cstealth\u201d or \u201cpublic\u201d.", ephemeral=True
+                content="\u26a0\ufe0f Privacy must be \u201cstealth\u201d or \u201cpublic\u201d.",
+                ephemeral=True,
             )
             return
         # CFG is not a modal field; it falls back to the saved flux default,
@@ -512,7 +613,8 @@ class FluxEditModal(Modal):
             return
         if scheduler is not None and scheduler not in SCHEDULER_NAMES:
             await interaction.response.send_message(
-                content="\u26a0\ufe0f Unknown scheduler \u201c" + scheduler + "\u201d.", ephemeral=True
+                content="\u26a0\ufe0f Unknown scheduler \u201c" + scheduler + "\u201d.",
+                ephemeral=True,
             )
             return
 
@@ -532,7 +634,8 @@ class FluxEditModal(Modal):
             return
 
         image_attachments = [
-            a for a in interaction.message.attachments
+            a
+            for a in interaction.message.attachments
             if a.content_type and a.content_type.startswith("image/")
         ]
         if not image_attachments:
@@ -543,18 +646,22 @@ class FluxEditModal(Modal):
 
         await interaction.response.defer(ephemeral=stealth)
         progress_msg = await interaction.followup.send(
-            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Editing image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui")
+            + "\U0001f3a8 Editing image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
-        progress = ProgressUpdater(progress_msg, lane="comfyui",
-                                   label="\U0001f3a8 Editing image\u2026")
+        progress = ProgressUpdater(
+            progress_msg, lane="comfyui", label="\U0001f3a8 Editing image\u2026"
+        )
         log.info("Flux Edit clicked for message %s", interaction.message.id)
 
         model = "flux3_klein"
         spec = config["models"].get(model, {}).get("i2i")
         if spec is None:
             progress.done = True
-            await reply_error(interaction, "\u274c The Flux edit workflow is not configured.", target=progress_msg)
+            await reply_error(
+                interaction, "\u274c The Flux edit workflow is not configured.", target=progress_msg
+            )
             return
 
         # Fall back to the user's saved flux defaults for unset fields.
@@ -574,7 +681,11 @@ class FluxEditModal(Modal):
         except Exception as exc:
             progress.done = True
             log.exception("Flux Edit download/upload failed")
-            await reply_error(interaction, f"\u274c Could not process the source image: {exc}", target=progress_msg)
+            await reply_error(
+                interaction,
+                f"\u274c Could not process the source image: {exc}",
+                target=progress_msg,
+            )
             return
 
         gen_kwargs = {
@@ -603,15 +714,26 @@ class FluxEditModal(Modal):
             ]
             base_desc = "\n".join(base_lines)
             await deliver_generation(
-                interaction, images=images, meta=meta, base_desc=base_desc,
-                color=int(discord.Color.green()), spec=spec, model=model,
-                suffix="i2i", stealth=stealth, target=progress_msg,
+                interaction,
+                images=images,
+                meta=meta,
+                base_desc=base_desc,
+                color=int(discord.Color.green()),
+                spec=spec,
+                model=model,
+                suffix="i2i",
+                stealth=stealth,
+                target=progress_msg,
                 save_kwargs={**gen_kwargs, "seed": None},
             )
         except Exception as exc:
             progress.done = True
             log_job_error(log, "Flux Edit failed", exc)
-            await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
+            await reply_error(
+                interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg
+            )
+
+
 class QwenEditModal(Modal):
     """Modal form for editing a generated image via the single-image
     Qwen Image 2.1 edit workflow.
@@ -627,23 +749,33 @@ class QwenEditModal(Modal):
         super().__init__(title="Qwen Edit (1-image workflow)")
         self.default_stealth = default_stealth
         self.prompt_input = TextInput(
-            label="Prompt", style=TextStyle.paragraph,
-            placeholder="Describe the edit", required=True,
+            label="Prompt",
+            style=TextStyle.paragraph,
+            placeholder="Describe the edit",
+            required=True,
         )
         self.steps_input = TextInput(
-            label="Steps (optional)", style=TextStyle.short, required=False,
+            label="Steps (optional)",
+            style=TextStyle.short,
+            required=False,
             placeholder="e.g. 25",
         )
         self.sampler_input = TextInput(
-            label="Sampler (optional)", style=TextStyle.short, required=False,
+            label="Sampler (optional)",
+            style=TextStyle.short,
+            required=False,
             placeholder="e.g. euler",
         )
         self.scheduler_input = TextInput(
-            label="Scheduler (optional)", style=TextStyle.short, required=False,
+            label="Scheduler (optional)",
+            style=TextStyle.short,
+            required=False,
             placeholder="e.g. simple",
         )
         self.privacy_input = TextInput(
-            label="Privacy (optional)", style=TextStyle.short, required=False,
+            label="Privacy (optional)",
+            style=TextStyle.short,
+            required=False,
             placeholder="stealth = only you see it; public = visible to everyone",
         )
         self.add_item(self.prompt_input)
@@ -661,7 +793,8 @@ class QwenEditModal(Modal):
             stealth = self.default_stealth
         else:
             await interaction.response.send_message(
-                content="\u26a0\ufe0f Privacy must be \u201cstealth\u201d or \u201cpublic\u201d.", ephemeral=True
+                content="\u26a0\ufe0f Privacy must be \u201cstealth\u201d or \u201cpublic\u201d.",
+                ephemeral=True,
             )
             return
         # CFG is not a modal field; it always falls back to the saved Qwen default.
@@ -677,7 +810,8 @@ class QwenEditModal(Modal):
             return
         if scheduler is not None and scheduler not in SCHEDULER_NAMES:
             await interaction.response.send_message(
-                content="\u26a0\ufe0f Unknown scheduler \u201c" + scheduler + "\u201d.", ephemeral=True
+                content="\u26a0\ufe0f Unknown scheduler \u201c" + scheduler + "\u201d.",
+                ephemeral=True,
             )
             return
 
@@ -697,7 +831,8 @@ class QwenEditModal(Modal):
             return
 
         image_attachments = [
-            a for a in interaction.message.attachments
+            a
+            for a in interaction.message.attachments
             if a.content_type and a.content_type.startswith("image/")
         ]
         if not image_attachments:
@@ -708,18 +843,24 @@ class QwenEditModal(Modal):
 
         await interaction.response.defer(ephemeral=stealth)
         progress_msg = await interaction.followup.send(
-            content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Editing image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+            content=job_queue.waiting_prefix("comfyui")
+            + "\U0001f3a8 Editing image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
         )
-        progress = ProgressUpdater(progress_msg, lane="comfyui",
-                                   label="\U0001f3a8 Editing image\u2026")
+        progress = ProgressUpdater(
+            progress_msg, lane="comfyui", label="\U0001f3a8 Editing image\u2026"
+        )
         log.info("Qwen Edit clicked for message %s", interaction.message.id)
 
         model = "qwen_image"
         spec = config["models"].get(model, {}).get("i2i")
         if spec is None:
             progress.done = True
-            await reply_error(interaction, "\u274c The Qwen single-image edit workflow is not configured.", target=progress_msg)
+            await reply_error(
+                interaction,
+                "\u274c The Qwen single-image edit workflow is not configured.",
+                target=progress_msg,
+            )
             return
 
         # Fall back to the user's shared Qwen defaults for unset fields.
@@ -739,7 +880,11 @@ class QwenEditModal(Modal):
         except Exception as exc:
             progress.done = True
             log.exception("Qwen Edit download/upload failed")
-            await reply_error(interaction, f"\u274c Could not process the source image: {exc}", target=progress_msg)
+            await reply_error(
+                interaction,
+                f"\u274c Could not process the source image: {exc}",
+                target=progress_msg,
+            )
             return
 
         gen_kwargs = {
@@ -773,15 +918,24 @@ class QwenEditModal(Modal):
             ]
             base_desc = "\n".join(base_lines)
             await deliver_generation(
-                interaction, images=images, meta=meta, base_desc=base_desc,
-                color=int(discord.Color.purple()), spec=spec, model=model,
-                suffix="i2i", stealth=stealth, target=progress_msg,
+                interaction,
+                images=images,
+                meta=meta,
+                base_desc=base_desc,
+                color=int(discord.Color.purple()),
+                spec=spec,
+                model=model,
+                suffix="i2i",
+                stealth=stealth,
+                target=progress_msg,
                 save_kwargs={**gen_kwargs, "seed": None},
             )
         except Exception as exc:
             progress.done = True
             log_job_error(log, "Qwen Edit failed", exc)
-            await reply_error(interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg)
+            await reply_error(
+                interaction, job_error_text("\u274c Image edit failed:", exc), target=progress_msg
+            )
 
 
 class FluxEditButton(Button):
@@ -793,7 +947,12 @@ class FluxEditButton(Button):
     """
 
     def __init__(self):
-        super().__init__(label="Flux Edit", emoji="\U0001f973", style=discord.ButtonStyle.primary, custom_id="edit_image_generation")
+        super().__init__(
+            label="Flux Edit",
+            emoji="\U0001f973",
+            style=discord.ButtonStyle.primary,
+            custom_id="edit_image_generation",
+        )
 
     async def callback(self, interaction: discord.Interaction):
         if await ban_guard(interaction):
@@ -812,7 +971,12 @@ class QwenEditButton(Button):
     """
 
     def __init__(self):
-        super().__init__(label="Qwen Edit", emoji="\u2728", style=discord.ButtonStyle.green, custom_id="qwen_edit_image_generation")
+        super().__init__(
+            label="Qwen Edit",
+            emoji="\u2728",
+            style=discord.ButtonStyle.green,
+            custom_id="qwen_edit_image_generation",
+        )
 
     async def callback(self, interaction: discord.Interaction):
         if await ban_guard(interaction):
@@ -834,8 +998,11 @@ class CancelButton(Button):
     async def callback(self, interaction: discord.Interaction):
         if await ban_guard(interaction):
             return
-        if self.user_id and self.user_id != interaction.user.id \
-                and not can_manage(interaction.user.id):
+        if (
+            self.user_id
+            and self.user_id != interaction.user.id
+            and not can_manage(interaction.user.id)
+        ):
             await interaction.response.send_message(
                 content="\u26a0\ufe0f You can only cancel your own generation.", ephemeral=True
             )
@@ -886,6 +1053,8 @@ class GenerationView(View):
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item):
         log.warning("GenerationView error: %s", error)
+
+
 class ThinkingView(View):
     """Select menu shown by /gen_prompt once the model is chosen.
 
@@ -900,10 +1069,21 @@ class ThinkingView(View):
     so no other LLM job can start while the model is loaded.
     """
 
-    def __init__(self, chosen_model: str, supported: list[str], prompt: str,
-                 megapixels: int, aspect_ratio: str,
-                 max_tokens: int | None, temperature: float | None, llm_cfg: dict,
-                 completion, state: dict, job=None, user_id: int | None = None):
+    def __init__(
+        self,
+        chosen_model: str,
+        supported: list[str],
+        prompt: str,
+        megapixels: int,
+        aspect_ratio: str,
+        max_tokens: int | None,
+        temperature: float | None,
+        llm_cfg: dict,
+        completion,
+        state: dict,
+        job=None,
+        user_id: int | None = None,
+    ):
         super().__init__(timeout=30)
         self.chosen_model = chosen_model
         self.prompt = prompt
@@ -917,12 +1097,15 @@ class ThinkingView(View):
         self.job = job
         options = [discord.SelectOption(label="API default", value="api_default")]
         options += [discord.SelectOption(label=e, value=e) for e in supported]
-        self.add_item(ThinkingSelect(
-            placeholder="Reasoning effort",
-            options=options,
-            min_values=1, max_values=1,
-            custom_id="gen_prompt_thinking",
-        ))
+        self.add_item(
+            ThinkingSelect(
+                placeholder="Reasoning effort",
+                options=options,
+                min_values=1,
+                max_values=1,
+                custom_id="gen_prompt_thinking",
+            )
+        )
         # The picker is the only UI while the session waits for a choice, so
         # it carries the Cancel button too.
         if job is not None:
@@ -980,6 +1163,8 @@ class ThinkingSelect(Select):
 
     async def callback(self, interaction: discord.Interaction):
         await self.view.handle_select(interaction, self.values[0])
+
+
 class AdminView(View):
     """Ephemeral admin panel: Restart, Promote/Demote, Ban/Unban.
 
@@ -1026,12 +1211,15 @@ class RestartButton(Button):
 
 class ManageAdminsButton(Button):
     def __init__(self):
-        super().__init__(label="Promote / Demote Admins", emoji="\U0001f465", custom_id="admin_manage_admins")
+        super().__init__(
+            label="Promote / Demote Admins", emoji="\U0001f465", custom_id="admin_manage_admins"
+        )
 
     async def callback(self, interaction: discord.Interaction):
         if not is_owner(interaction.user.id):
             await interaction.response.send_message(
-                content="\u26a0\ufe0f Only the bot owner can promote or demote admins.", ephemeral=True
+                content="\u26a0\ufe0f Only the bot owner can promote or demote admins.",
+                ephemeral=True,
             )
             return
         await interaction.response.send_message(
@@ -1041,7 +1229,9 @@ class ManageAdminsButton(Button):
 
 class ManageBansButton(Button):
     def __init__(self):
-        super().__init__(label="Ban / Unban Users", emoji="\U0001f6ab", custom_id="admin_manage_bans")
+        super().__init__(
+            label="Ban / Unban Users", emoji="\U0001f6ab", custom_id="admin_manage_bans"
+        )
 
     async def callback(self, interaction: discord.Interaction):
         if not can_manage(interaction.user.id):
@@ -1063,7 +1253,8 @@ class ViewBansButton(Button):
     async def callback(self, interaction: discord.Interaction):
         if not can_manage(interaction.user.id):
             await interaction.response.send_message(
-                content="\u26a0\ufe0f Only the owner or admins can view the user list.", ephemeral=True
+                content="\u26a0\ufe0f Only the owner or admins can view the user list.",
+                ephemeral=True,
             )
             return
         bans = moderation.get_bans()
@@ -1074,12 +1265,15 @@ class ViewBansButton(Button):
             for a in sorted(admins)
         ]
         if not ban_lines:
-            text = "\U0001f6ab **Ban list:** (empty)\n\n\U0001f465 **Admins:** " + ", ".join(admin_labels)
+            text = "\U0001f6ab **Ban list:** (empty)\n\n\U0001f465 **Admins:** " + ", ".join(
+                admin_labels
+            )
         else:
             text = (
                 "\U0001f6ab **Ban list:**\n"
                 + "\n".join(ban_lines)
-                + "\n\n\U0001f465 **Admins:** " + ", ".join(admin_labels)
+                + "\n\n\U0001f465 **Admins:** "
+                + ", ".join(admin_labels)
             )
         await interaction.response.send_message(content=text, ephemeral=True)
 
@@ -1193,7 +1387,8 @@ class AdminsModal(Modal):
         super().__init__(title="Promote / Demote Admin")
         self.action = action
         self.id_input = TextInput(
-            label="Discord user ID", style=TextStyle.short,
+            label="Discord user ID",
+            style=TextStyle.short,
             placeholder="e.g. 123456789012345678",
         )
         self.add_item(self.id_input)
@@ -1322,7 +1517,8 @@ class BansModal(Modal):
         super().__init__(title="Ban / Unban User")
         self.action = action
         self.id_input = TextInput(
-            label="Discord user ID", style=TextStyle.short,
+            label="Discord user ID",
+            style=TextStyle.short,
             placeholder="e.g. 123456789012345678",
         )
         self.add_item(self.id_input)

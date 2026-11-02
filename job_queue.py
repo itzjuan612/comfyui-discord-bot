@@ -90,6 +90,8 @@ class Job:
     created_at: float = field(default_factory=time.monotonic)
 
     def __post_init__(self) -> None:
+        # Binds the job to the running loop: ``submit`` is async-only, so the
+        # Job cannot be created (or awaited) from synchronous code.
         loop = asyncio.get_running_loop()
         self._future = loop.create_future()
         self._cancel_event = asyncio.Event()
@@ -198,9 +200,7 @@ class JobQueue:
                 await self._stop(
                     job,
                     work,
-                    JobRunTimeout(
-                        f"Stopped after exceeding the {job.run_timeout:.0f}s time limit"
-                    ),
+                    JobRunTimeout(f"Stopped after exceeding the {job.run_timeout:.0f}s time limit"),
                 )
         except Exception as exc:  # noqa: BLE001 - the worker must never die
             self._finish(job, exc=exc)

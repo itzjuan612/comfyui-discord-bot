@@ -21,7 +21,9 @@ def llm_base_url() -> str:
         return url.rstrip("/")
     address = str(llm_cfg.get("address") or "").strip().split("://")[-1]
     if not address:
-        raise ComfyUIError("LLM endpoint not configured in config.yaml (set llm.url or llm.address)")
+        raise ComfyUIError(
+            "LLM endpoint not configured in config.yaml (set llm.url or llm.address)"
+        )
     scheme = str(llm_cfg.get("scheme") or "http")
     port = llm_cfg.get("port")
     if port not in (None, ""):
@@ -45,8 +47,11 @@ async def fetch_llm_models() -> list[str]:
     data = None
     session = get_session()
     try:
-        async with session.get(llm_base_url() + "/api/v1/models", headers=headers,
-                                timeout=aiohttp.ClientTimeout(total=15)) as resp:
+        async with session.get(
+            llm_base_url() + "/api/v1/models",
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as resp:
             if resp.status == 200:
                 data = await resp.json()
             else:
@@ -56,17 +61,14 @@ async def fetch_llm_models() -> list[str]:
     if data is None:
         # Endpoint not available (non-LM-Studio server) or malformed response;
         # fall back to the standard OpenAI models endpoint.
-        async with session.get(llm_base_url() + "/v1/models", headers=headers,
-                               timeout=aiohttp.ClientTimeout(total=15)) as resp:
+        async with session.get(
+            llm_base_url() + "/v1/models", headers=headers, timeout=aiohttp.ClientTimeout(total=15)
+        ) as resp:
             resp.raise_for_status()
             data = await resp.json()
     if "models" in data:
         # LM Studio shape: use "key" as the id, skip non-chat (embedding) models.
-        return [
-            m["key"]
-            for m in data["models"]
-            if m.get("type", "llm") == "llm"
-        ]
+        return [m["key"] for m in data["models"] if m.get("type", "llm") == "llm"]
     # OpenAI shape.
     return [m["id"] for m in data.get("data", [])]
 
@@ -87,8 +89,9 @@ async def llm_model_load(model: str) -> bool:
     try:
         session = get_session()
         # LM Studio expects {"model": <key>} (not "id").
-        async with session.post(url, json={"model": model}, headers=headers,
-                                timeout=aiohttp.ClientTimeout(total=300)) as resp:
+        async with session.post(
+            url, json={"model": model}, headers=headers, timeout=aiohttp.ClientTimeout(total=300)
+        ) as resp:
             if resp.status in (404, 405):
                 log.info("LLM endpoint has no /api/v1/models/load; skipping load for %r", model)
                 return False
@@ -115,8 +118,12 @@ async def llm_model_unload(model: str) -> bool:
     try:
         session = get_session()
         # LM Studio expects {"instance_id": <key>} (not "id").
-        async with session.post(url, json={"instance_id": model}, headers=headers,
-                                timeout=aiohttp.ClientTimeout(total=300)) as resp:
+        async with session.post(
+            url,
+            json={"instance_id": model},
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=300),
+        ) as resp:
             if resp.status in (404, 405):
                 log.info("LLM endpoint has no /api/v1/models/unload; skipping unload for %r", model)
                 return False
@@ -128,8 +135,13 @@ async def llm_model_unload(model: str) -> bool:
         return False
 
 
-async def call_llm(prompt: str, model: str, max_tokens: int | None = None,
-                   temperature: float | None = None, reasoning_effort: str | None = None) -> str:
+async def call_llm(
+    prompt: str,
+    model: str,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    reasoning_effort: str | None = None,
+) -> str:
     """Call the configured OpenAI-compatible endpoint directly from the bot.
 
     This bypasses the ComfyUI LLM node entirely, so the request timeout is
@@ -162,7 +174,9 @@ async def call_llm(prompt: str, model: str, max_tokens: int | None = None,
     session = get_session()
     for _attempt in range(2):
         async with session.post(
-            url, json=payload, headers=headers,
+            url,
+            json=payload,
+            headers=headers,
             timeout=aiohttp.ClientTimeout(total=timeout),
         ) as resp:
             data = await resp.json()
@@ -212,7 +226,9 @@ async def probe_reasoning_efforts(model: str) -> list[str]:
         }
         try:
             async with session.post(
-                url, json=payload, headers=headers,
+                url,
+                json=payload,
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:
                 log.debug("Probe reasoning_effort=%r for %r: HTTP %s", effort, model, resp.status)
@@ -281,7 +297,10 @@ async def refresh_llm_models(force: bool = False) -> list[str]:
 async def get_llm_models() -> list[str]:
     """Return cached model ids, fetching them first if the cache is stale."""
     now = asyncio.get_running_loop().time()
-    if llm_model_cache["fetched_at"] is None or now - llm_model_cache["fetched_at"] >= LLM_MODEL_TTL_SECONDS:
+    if (
+        llm_model_cache["fetched_at"] is None
+        or now - llm_model_cache["fetched_at"] >= LLM_MODEL_TTL_SECONDS
+    ):
         await refresh_llm_models()
     return llm_model_cache["models"]
 
@@ -291,5 +310,3 @@ async def llm_model_refresh_loop() -> None:
     while True:
         await asyncio.sleep(LLM_MODEL_TTL_SECONDS)
         await refresh_llm_models(force=True)
-
-

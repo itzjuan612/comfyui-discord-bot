@@ -30,9 +30,12 @@ def test_jobs_run_serially_in_submission_order():
         jobs = [queue.submit(work(n), name=str(n)) for n in range(3)]
         assert await asyncio.gather(*jobs) == [0, 1, 2]
         assert order == [
-            ("start", 0), ("end", 0),
-            ("start", 1), ("end", 1),
-            ("start", 2), ("end", 2),
+            ("start", 0),
+            ("end", 0),
+            ("start", 1),
+            ("end", 1),
+            ("start", 2),
+            ("end", 2),
         ]
 
     asyncio.run(scenario())
@@ -106,8 +109,7 @@ def test_run_timeout_cancels_the_job_and_calls_on_cancel():
         async def on_cancel():
             stopped.append(True)
 
-        job = queue.submit(forever(), name="forever", run_timeout=0.02,
-                           on_cancel=on_cancel)
+        job = queue.submit(forever(), name="forever", run_timeout=0.02, on_cancel=on_cancel)
         with pytest.raises(JobRunTimeout):
             await job
         assert stopped == [True]
@@ -316,15 +318,21 @@ def test_job_done_flag_tracks_completion():
 def test_error_text_reports_cancellations_without_the_failure_prefix():
     prefix = "\u274c Generation failed:"
     assert job_error_text(prefix, JobCancelled("Cancelled")) == "\u23f9\ufe0f Cancelled."
-    assert job_error_text(prefix, JobQueuedTimeout("Timed out waiting in the queue")) == \
-        "\u23f2\ufe0f Timed out waiting in the queue."
-    assert job_error_text(prefix, JobRunTimeout("Stopped after exceeding the 300s time limit")) == \
-        "\u23f2\ufe0f Stopped after exceeding the 300s time limit."
+    assert (
+        job_error_text(prefix, JobQueuedTimeout("Timed out waiting in the queue"))
+        == "\u23f2\ufe0f Timed out waiting in the queue."
+    )
+    assert (
+        job_error_text(prefix, JobRunTimeout("Stopped after exceeding the 300s time limit"))
+        == "\u23f2\ufe0f Stopped after exceeding the 300s time limit."
+    )
 
 
 def test_error_text_keeps_the_prefix_for_real_failures():
-    assert job_error_text("\u274c Generation failed:", ValueError("boom")) == \
-        "\u274c Generation failed: boom"
+    assert (
+        job_error_text("\u274c Generation failed:", ValueError("boom"))
+        == "\u274c Generation failed: boom"
+    )
 
 
 def test_log_job_error_downgrades_cancellations(caplog):

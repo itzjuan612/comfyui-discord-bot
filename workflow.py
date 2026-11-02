@@ -141,7 +141,9 @@ def _apply_model(workflow: dict, spec: dict, kwargs: dict) -> None:
                 node["inputs"][key] = ckpt_name
                 break
             else:
-                raise ValueError(f"Workflow has no model-loader node; cannot select model {ckpt_name!r}.")
+                raise ValueError(
+                    f"Workflow has no model-loader node; cannot select model {ckpt_name!r}."
+                )
 
     # Ideogram's second UNet loader (unconditional branch) can be overridden
     # independently via the spec's default_model_unconditional / model_node_unconditional.
@@ -210,8 +212,12 @@ def _apply_prompt(workflow: dict, spec: dict, kwargs: dict) -> None:
     # enabled: only translate=True translates; None/False pass the prompt
     # through untranslated. The raw workflow ships manual_translate: false
     # (translate on), so the input is always rewritten when the node exists.
-    _set_node(workflow, spec.get("translate_node"), spec.get("translate_key", "manual_translate"),
-              not bool(kwargs.get("translate")))
+    _set_node(
+        workflow,
+        spec.get("translate_node"),
+        spec.get("translate_key", "manual_translate"),
+        not bool(kwargs.get("translate")),
+    )
 
     # Qwen Image 2.1 T2I: optional prompt enhancement chain between the
     # translate node and the encoder (StringConcatenate -> TextGenerate ->
@@ -334,7 +340,10 @@ def _apply_lora(workflow: dict, spec: dict, kwargs: dict) -> None:
         if lora_strength is not None:
             workflow[lora_strength_node]["inputs"]["value"] = float(lora_strength)
         active_nodes = []
-        for lora_name, lora_node in ((lora1, spec.get("lora1_node")), (lora2, spec.get("lora2_node"))):
+        for lora_name, lora_node in (
+            (lora1, spec.get("lora1_node")),
+            (lora2, spec.get("lora2_node")),
+        ):
             if lora_node is None:
                 continue
             nid = str(lora_node)
@@ -375,7 +384,10 @@ def _apply_lora(workflow: dict, spec: dict, kwargs: dict) -> None:
     else:
         strength_val = float(lora_strength) if lora_strength is not None else None
         active = []
-        for lora_name, lora_node in ((lora1, spec.get("lora1_node")), (lora2, spec.get("lora2_node"))):
+        for lora_name, lora_node in (
+            (lora1, spec.get("lora1_node")),
+            (lora2, spec.get("lora2_node")),
+        ):
             if lora_node is None:
                 continue
             nid = str(lora_node)
@@ -391,10 +403,18 @@ def _apply_lora(workflow: dict, spec: dict, kwargs: dict) -> None:
         if active or spec.get("lora1_node") is not None or spec.get("lora2_node") is not None:
             # Rebuild the chain: checkpoint (model) / CLIP switch (clip) ->
             # active LoRA loaders -> sampler (model) and text encoders (clip).
-            ckpt_nid = next((str(k) for k, v in workflow.items()
-                              if v["class_type"] == "CheckpointLoaderSimple"), None)
-            clip_nid = next((str(k) for k, v in workflow.items()
-                              if v["class_type"] == "CLIP Input Switch"), None)
+            ckpt_nid = next(
+                (
+                    str(k)
+                    for k, v in workflow.items()
+                    if v["class_type"] == "CheckpointLoaderSimple"
+                ),
+                None,
+            )
+            clip_nid = next(
+                (str(k) for k, v in workflow.items() if v["class_type"] == "CLIP Input Switch"),
+                None,
+            )
             model_src, clip_src = ckpt_nid, clip_nid
             for nid in active:
                 # Clip output index: 0 from the CLIP switch, 1 from a LoraLoader.
@@ -415,7 +435,9 @@ def _apply_resolution(workflow: dict, spec: dict, kwargs: dict) -> None:
     quality = kwargs.get("quality")
     resolution_node = spec.get("resolution_node")
     if megapixels is not None and resolution_node is not None:
-        workflow[str(resolution_node)]["inputs"][spec.get("megapixels_key", "megapixels")] = int(megapixels)
+        workflow[str(resolution_node)]["inputs"][spec.get("megapixels_key", "megapixels")] = int(
+            megapixels
+        )
     if megapixels is not None:
         mp_key = spec.get("megapixels_key", "megapixels")
         for node_id in spec.get("megapixels_nodes") or []:
@@ -426,8 +448,9 @@ def _apply_resolution(workflow: dict, spec: dict, kwargs: dict) -> None:
         if combo:
             workflow[str(combo[0])]["inputs"][combo[1]] = combo[2]
     if aspect_ratio is not None and resolution_node is not None:
-        workflow[str(resolution_node)]["inputs"][spec.get("aspect_ratio_key", "aspect_ratio")] = \
+        workflow[str(resolution_node)]["inputs"][spec.get("aspect_ratio_key", "aspect_ratio")] = (
             normalize_aspect_ratio(aspect_ratio)
+        )
     if quality is not None:
         _set_node(workflow, spec.get("quality_node"), spec.get("quality_key", "choice"), quality)
 
@@ -540,8 +563,14 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
                     log.warning("Could not list checkpoints for fallback: %s", exc)
                     available = []
                 if available and default_ckpt not in available:
-                    effective_ckpt = next((c for c in available if "sdxl" in c.lower()), available[0])
-                    log.info("Default checkpoint %r not available; falling back to %r", default_ckpt, effective_ckpt)
+                    effective_ckpt = next(
+                        (c for c in available if "sdxl" in c.lower()), available[0]
+                    )
+                    log.info(
+                        "Default checkpoint %r not available; falling back to %r",
+                        default_ckpt,
+                        effective_ckpt,
+                    )
                 else:
                     effective_ckpt = default_ckpt
                 kwargs["ckpt_name"] = effective_ckpt
@@ -599,28 +628,41 @@ async def run_image(spec: dict, on_progress=None, **kwargs):
     # If this checkpoint was previously seen without a bundled text
     # encoder/VAE, use the separate loaders straight away (no error/retry).
     switch_node = spec.get("switch_node")
-    if switch_node is not None and effective_ckpt and user_settings.is_split_checkpoint(effective_ckpt):
+    if (
+        switch_node is not None
+        and effective_ckpt
+        and user_settings.is_split_checkpoint(effective_ckpt)
+    ):
         api_workflow[str(switch_node)]["inputs"]["value"] = True
         log.info("Checkpoint %r cached as split; using separate CLIP/VAE loaders", effective_ckpt)
 
     prompt_id, client_id = await comfy.queue_prompt(api_workflow)
     try:
         filenames = await comfy.wait_for_result(
-            prompt_id, client_id, on_progress=on_progress,
-            progress_node_id=progress_node_id, progress_total=progress_total,
+            prompt_id,
+            client_id,
+            on_progress=on_progress,
+            progress_node_id=progress_node_id,
+            progress_total=progress_total,
         )
     except ComfyUIError:
         # If the checkpoint has no bundled text encoder/VAE, the run fails
         # (ComfyUI reports a generic "error"). Flip the switch node so the
         # separate CLIPLoader/VAELoader are used, and retry once.
         if switch_node is not None and api_workflow[str(switch_node)]["inputs"]["value"] is False:
-            log.info("Checkpoint %r likely lacks bundled CLIP/VAE; enabling split loaders and retrying", effective_ckpt)
+            log.info(
+                "Checkpoint %r likely lacks bundled CLIP/VAE; enabling split loaders and retrying",
+                effective_ckpt,
+            )
             user_settings.mark_split_checkpoint(effective_ckpt)
             api_workflow[str(switch_node)]["inputs"]["value"] = True
             prompt_id, client_id = await comfy.queue_prompt(api_workflow)
             filenames = await comfy.wait_for_result(
-                prompt_id, client_id, on_progress=on_progress,
-                progress_node_id=progress_node_id, progress_total=progress_total,
+                prompt_id,
+                client_id,
+                on_progress=on_progress,
+                progress_node_id=progress_node_id,
+                progress_total=progress_total,
             )
         else:
             raise
@@ -643,6 +685,7 @@ async def run_text_workflow(file_path: str, patches: dict, target_node: str | No
     for node_id, inputs in patches.items():
         for key, value in inputs.items():
             workflow[str(node_id)]["inputs"][key] = value
+
     async def _run() -> str:
         prompt_id, _client_id = await comfy.queue_prompt(workflow)
         return await comfy.wait_for_output_text(prompt_id, target_node=target_node)
@@ -653,6 +696,7 @@ async def run_text_workflow(file_path: str, patches: dict, target_node: str | No
     # through that lane so all ComfyUI execution stays serial. In unified mode
     # everything already shares one lane.
     from job_queue import job_queue
+
     if job_queue.mode == "separate":
         job = job_queue.submit(_run(), lane="comfyui", name="prompt_gen_workflow")
         try:

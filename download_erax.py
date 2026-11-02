@@ -13,6 +13,7 @@ Requires: huggingface_hub always; ultralytics (pulls in onnx / onnxslim /
 torch) only for this one-time export step, and only until
 models/erax_nsfw.onnx exists on disk.
 """
+
 import os
 import sys
 
@@ -45,6 +46,7 @@ def download(size: str = "nano") -> str:
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     from huggingface_hub import hf_hub_download
+
     try:
         from ultralytics import YOLO
     except ImportError as exc:
@@ -70,7 +72,9 @@ def download(size: str = "nano") -> str:
     if os.path.abspath(generated) != os.path.abspath(CANONICAL_ONNX):
         os.replace(generated, CANONICAL_ONNX)
 
-    print("NSFW model ready: %s (%.2f MB)" % (CANONICAL_ONNX, os.path.getsize(CANONICAL_ONNX) / 1e6))
+    print(
+        "NSFW model ready: %s (%.2f MB)" % (CANONICAL_ONNX, os.path.getsize(CANONICAL_ONNX) / 1e6)
+    )
     return CANONICAL_ONNX
 
 

@@ -34,7 +34,7 @@ class SettingsCog(commands.Cog):
         s = user_settings.get_settings(interaction.user.id)
         await interaction.edit_original_response(
             content=f"**Your saved defaults:**\n\n{user_settings.format_settings(s)}\n\n"
-                      "Tip: run a `/settings` subcommand with parameters to update them, or `/reset_settings` to clear them."
+            "Tip: run a `/settings` subcommand with parameters to update them, or `/reset_settings` to clear them."
         )
 
     async def _apply(self, interaction: discord.Interaction, **values) -> None:
@@ -57,18 +57,26 @@ class SettingsCog(commands.Cog):
     @app_commands.describe(width="Default width in pixels (shared by /sdxl and /zimage)")
     @app_commands.describe(height="Default height in pixels (shared by /sdxl and /zimage)")
     @app_commands.describe(stealth="Default privacy (ephemeral) for all your generations")
-    async def settings_general(self, interaction: discord.Interaction,
-                               negative_prompt: str | None = None,
-                               width: int | None = None,
-                               height: int | None = None,
-                               stealth: bool | None = None):
+    async def settings_general(
+        self,
+        interaction: discord.Interaction,
+        negative_prompt: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        stealth: bool | None = None,
+    ):
         await interaction.response.defer(ephemeral=True)
         await self._apply(
             interaction,
-            negative_prompt=negative_prompt, width=width, height=height, stealth=stealth,
+            negative_prompt=negative_prompt,
+            width=width,
+            height=height,
+            stealth=stealth,
         )
 
-    @settings.command(name="sdxl", description="Default SDXL settings (used by /sdxl and SDXL upscales)")
+    @settings.command(
+        name="sdxl", description="Default SDXL settings (used by /sdxl and SDXL upscales)"
+    )
     @app_commands.autocomplete(sdxl_checkpoint=_sdxl_model_autocomplete)
     @app_commands.describe(sdxl_checkpoint="Default SDXL checkpoint (models/checkpoints)")
     @app_commands.describe(sdxl_steps="Default SDXL sampling steps")
@@ -77,17 +85,23 @@ class SettingsCog(commands.Cog):
     @app_commands.choices(sdxl_scheduler=SCHEDULER_CHOICES)
     @app_commands.describe(sdxl_sampler="Default SDXL sampler")
     @app_commands.describe(sdxl_scheduler="Default SDXL scheduler")
-    async def settings_sdxl(self, interaction: discord.Interaction,
-                            sdxl_checkpoint: str | None = None,
-                            sdxl_steps: int | None = None,
-                            sdxl_cfg: float | None = None,
-                            sdxl_sampler: str | None = None,
-                            sdxl_scheduler: str | None = None):
+    async def settings_sdxl(
+        self,
+        interaction: discord.Interaction,
+        sdxl_checkpoint: str | None = None,
+        sdxl_steps: int | None = None,
+        sdxl_cfg: float | None = None,
+        sdxl_sampler: str | None = None,
+        sdxl_scheduler: str | None = None,
+    ):
         await interaction.response.defer(ephemeral=True)
         await self._apply(
             interaction,
-            sdxl_checkpoint=sdxl_checkpoint, sdxl_steps=sdxl_steps, sdxl_cfg=sdxl_cfg,
-            sdxl_sampler=sdxl_sampler, sdxl_scheduler=sdxl_scheduler,
+            sdxl_checkpoint=sdxl_checkpoint,
+            sdxl_steps=sdxl_steps,
+            sdxl_cfg=sdxl_cfg,
+            sdxl_sampler=sdxl_sampler,
+            sdxl_scheduler=sdxl_scheduler,
         )
 
     @settings.command(name="zimage", description="Default Z-Image settings (used by /zimage)")
@@ -99,17 +113,23 @@ class SettingsCog(commands.Cog):
     @app_commands.choices(zimage_scheduler=SCHEDULER_CHOICES)
     @app_commands.describe(zimage_sampler="Default Z-Image sampler")
     @app_commands.describe(zimage_scheduler="Default Z-Image scheduler")
-    async def settings_zimage(self, interaction: discord.Interaction,
-                              zimage_model: str | None = None,
-                              zimage_steps: int | None = None,
-                              zimage_cfg: float | None = None,
-                              zimage_sampler: str | None = None,
-                              zimage_scheduler: str | None = None):
+    async def settings_zimage(
+        self,
+        interaction: discord.Interaction,
+        zimage_model: str | None = None,
+        zimage_steps: int | None = None,
+        zimage_cfg: float | None = None,
+        zimage_sampler: str | None = None,
+        zimage_scheduler: str | None = None,
+    ):
         await interaction.response.defer(ephemeral=True)
         await self._apply(
             interaction,
-            zimage_model=zimage_model, zimage_steps=zimage_steps, zimage_cfg=zimage_cfg,
-            zimage_sampler=zimage_sampler, zimage_scheduler=zimage_scheduler,
+            zimage_model=zimage_model,
+            zimage_steps=zimage_steps,
+            zimage_cfg=zimage_cfg,
+            zimage_sampler=zimage_sampler,
+            zimage_scheduler=zimage_scheduler,
         )
 
     @settings.command(name="ideogram", description="Default Ideogram settings (used by /ideogram)")
@@ -118,18 +138,25 @@ class SettingsCog(commands.Cog):
     @app_commands.describe(ideogram_megapixels="Default resolution in megapixels")
     @app_commands.choices(ideogram_aspect_ratio=ASPECT_RATIO_CHOICES)
     @app_commands.describe(ideogram_aspect_ratio="Default aspect ratio preset")
-    async def settings_ideogram(self, interaction: discord.Interaction,
-                                ideogram_quality: str | None = None,
-                                ideogram_megapixels: int | None = None,
-                                ideogram_aspect_ratio: str | None = None):
+    async def settings_ideogram(
+        self,
+        interaction: discord.Interaction,
+        ideogram_quality: str | None = None,
+        ideogram_megapixels: int | None = None,
+        ideogram_aspect_ratio: str | None = None,
+    ):
         await interaction.response.defer(ephemeral=True)
         await self._apply(
             interaction,
-            ideogram_quality=ideogram_quality, ideogram_megapixels=ideogram_megapixels,
+            ideogram_quality=ideogram_quality,
+            ideogram_megapixels=ideogram_megapixels,
             ideogram_aspect_ratio=ideogram_aspect_ratio,
         )
 
-    @settings.command(name="flux", description="Default Flux settings (used by /flux_image, /flux_edit and the Flux Edit button)")
+    @settings.command(
+        name="flux",
+        description="Default Flux settings (used by /flux_image, /flux_edit and the Flux Edit button)",
+    )
     @app_commands.describe(flux_negative="Default negative prompt")
     @app_commands.describe(flux_cfg="Default CFG guidance scale")
     @app_commands.describe(flux_steps="Default sampling steps")
@@ -137,22 +164,34 @@ class SettingsCog(commands.Cog):
     @app_commands.describe(flux_sampler="Default sampler")
     @app_commands.choices(flux_scheduler=SCHEDULER_CHOICES)
     @app_commands.describe(flux_scheduler="Default scheduler")
-    @app_commands.describe(flux_megapixels="Default resolution in megapixels (used by /flux_image and /flux_edit)")
-    async def settings_flux(self, interaction: discord.Interaction,
-                            flux_negative: str | None = None,
-                            flux_cfg: float | None = None,
-                            flux_steps: int | None = None,
-                            flux_sampler: str | None = None,
-                            flux_scheduler: str | None = None,
-                            flux_megapixels: int | None = None):
+    @app_commands.describe(
+        flux_megapixels="Default resolution in megapixels (used by /flux_image and /flux_edit)"
+    )
+    async def settings_flux(
+        self,
+        interaction: discord.Interaction,
+        flux_negative: str | None = None,
+        flux_cfg: float | None = None,
+        flux_steps: int | None = None,
+        flux_sampler: str | None = None,
+        flux_scheduler: str | None = None,
+        flux_megapixels: int | None = None,
+    ):
         await interaction.response.defer(ephemeral=True)
         await self._apply(
             interaction,
-            flux_negative=flux_negative, flux_cfg=flux_cfg, flux_steps=flux_steps, flux_sampler=flux_sampler,
-            flux_scheduler=flux_scheduler, flux_megapixels=flux_megapixels,
+            flux_negative=flux_negative,
+            flux_cfg=flux_cfg,
+            flux_steps=flux_steps,
+            flux_sampler=flux_sampler,
+            flux_scheduler=flux_scheduler,
+            flux_megapixels=flux_megapixels,
         )
 
-    @settings.command(name="qwen", description="Default Qwen Image 2.1 settings (used by /qwen_image, /qwen_edit and the Qwen Edit button)")
+    @settings.command(
+        name="qwen",
+        description="Default Qwen Image 2.1 settings (used by /qwen_image, /qwen_edit and the Qwen Edit button)",
+    )
     @app_commands.describe(qwen_steps="Default sampling steps")
     @app_commands.describe(qwen_cfg="Default CFG guidance scale")
     @app_commands.choices(qwen_sampler=SAMPLER_CHOICES)
@@ -162,26 +201,36 @@ class SettingsCog(commands.Cog):
     @app_commands.describe(qwen_megapixels="Default resolution in megapixels (used by /qwen_image)")
     @app_commands.choices(qwen_aspect_ratio=ASPECT_RATIO_CHOICES)
     @app_commands.describe(qwen_aspect_ratio="Default aspect ratio preset (used by /qwen_image)")
-    async def settings_qwen(self, interaction: discord.Interaction,
-                            qwen_steps: int | None = None,
-                            qwen_cfg: float | None = None,
-                            qwen_sampler: str | None = None,
-                            qwen_scheduler: str | None = None,
-                            qwen_megapixels: int | None = None,
-                            qwen_aspect_ratio: str | None = None):
+    async def settings_qwen(
+        self,
+        interaction: discord.Interaction,
+        qwen_steps: int | None = None,
+        qwen_cfg: float | None = None,
+        qwen_sampler: str | None = None,
+        qwen_scheduler: str | None = None,
+        qwen_megapixels: int | None = None,
+        qwen_aspect_ratio: str | None = None,
+    ):
         await interaction.response.defer(ephemeral=True)
         await self._apply(
             interaction,
-            qwen_steps=qwen_steps, qwen_cfg=qwen_cfg, qwen_sampler=qwen_sampler,
-            qwen_scheduler=qwen_scheduler, qwen_megapixels=qwen_megapixels,
+            qwen_steps=qwen_steps,
+            qwen_cfg=qwen_cfg,
+            qwen_sampler=qwen_sampler,
+            qwen_scheduler=qwen_scheduler,
+            qwen_megapixels=qwen_megapixels,
             qwen_aspect_ratio=qwen_aspect_ratio,
         )
 
-    @app_commands.command(name="reset_settings", description="Clear your personal generation defaults")
+    @app_commands.command(
+        name="reset_settings", description="Clear your personal generation defaults"
+    )
     async def reset_settings(self, interaction: discord.Interaction):
         await interaction.response.defer()
         user_settings.reset_settings(interaction.user.id)
-        await interaction.edit_original_response(content="\u2705 Your saved defaults have been cleared.")
+        await interaction.edit_original_response(
+            content="\u2705 Your saved defaults have been cleared."
+        )
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -25,7 +25,10 @@ def base_graph() -> dict:
         "11": {"class_type": "UNETLoader", "inputs": {"unet_name": "orig-unet.safetensors"}},
         "12": {"class_type": "CLIPLoader", "inputs": {"clip_name": "orig-te.safetensors"}},
         "20": {"class_type": "CLIPTextEncode", "inputs": {"text": "old prompt", "clip": ["10", 1]}},
-        "21": {"class_type": "CLIPTextEncode", "inputs": {"text": "old negative", "clip": ["10", 1]}},
+        "21": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "old negative", "clip": ["10", 1]},
+        },
         "25": {
             "class_type": "EmptyLatentImage",
             "inputs": {"width": 512, "height": 512, "batch_size": 1},
@@ -51,8 +54,17 @@ def patched(kwargs=None, spec=None, graph=None):
 
 
 def test_text_and_sampling_inputs():
-    api = patched({"prompt": "a cat", "negative": "blurry", "seed": 7, "steps": 30,
-                   "cfg": 4.5, "sampler": "dpmpp_2m", "scheduler": "karras"})
+    api = patched(
+        {
+            "prompt": "a cat",
+            "negative": "blurry",
+            "seed": 7,
+            "steps": 30,
+            "cfg": 4.5,
+            "sampler": "dpmpp_2m",
+            "scheduler": "karras",
+        }
+    )
     assert api["20"]["inputs"]["text"] == "a cat"
     assert api["21"]["inputs"]["text"] == "blurry"
     assert api["30"]["inputs"]["seed"] == 7
@@ -70,8 +82,11 @@ def test_denoise_strength_only_with_denoise_node():
 
 
 def test_latent_size_needs_both_dimensions():
-    assert patched({"width": 1024})["25"]["inputs"] == {"width": 512, "height": 512,
-                                                        "batch_size": 1}
+    assert patched({"width": 1024})["25"]["inputs"] == {
+        "width": 512,
+        "height": 512,
+        "batch_size": 1,
+    }
     api = patched({"width": 1024, "height": 768})
     assert (api["25"]["inputs"]["width"], api["25"]["inputs"]["height"]) == (1024, 768)
 
@@ -81,7 +96,9 @@ def test_batch_size_is_independent_of_dimensions():
 
 
 def test_model_selection_writes_the_first_loader():
-    assert patched({"ckpt_name": "new.safetensors"})["10"]["inputs"]["ckpt_name"] == "new.safetensors"
+    assert (
+        patched({"ckpt_name": "new.safetensors"})["10"]["inputs"]["ckpt_name"] == "new.safetensors"
+    )
 
 
 def test_model_node_pins_the_loader():
@@ -95,8 +112,10 @@ def test_model_key_handles_an_unknown_loader_class():
     graph = base_graph()
     graph["11"] = {"class_type": "SomeNewLoader", "inputs": {"path": "orig.safetensors"}}
     spec = {**BASE_SPEC, "model_node": "11", "model_key": "path"}
-    assert patched({"ckpt_name": "new.safetensors"}, spec, graph)["11"]["inputs"]["path"] == \
-        "new.safetensors"
+    assert (
+        patched({"ckpt_name": "new.safetensors"}, spec, graph)["11"]["inputs"]["path"]
+        == "new.safetensors"
+    )
 
 
 def test_unknown_loader_class_without_model_key_raises():
@@ -120,24 +139,34 @@ def test_model_selection_without_a_loader_raises():
 
 
 def test_second_model_loader_for_the_unconditional_branch():
-    spec = {**BASE_SPEC, "model_node": "11", "model_node_unconditional": "11",
-            "default_model_unconditional": "uncond.safetensors"}
+    spec = {
+        **BASE_SPEC,
+        "model_node": "11",
+        "model_node_unconditional": "11",
+        "default_model_unconditional": "uncond.safetensors",
+    }
     assert patched({}, spec)["11"]["inputs"]["unet_name"] == "uncond.safetensors"
 
 
 def test_unconditional_model_uses_its_declared_key():
     graph = base_graph()
     graph["11"] = {"class_type": "DualLoader", "inputs": {"model_b": "orig"}}
-    spec = {**BASE_SPEC, "model_node_unconditional": "11", "model_key_unconditional": "model_b",
-            "default_model_unconditional": "uncond.safetensors"}
+    spec = {
+        **BASE_SPEC,
+        "model_node_unconditional": "11",
+        "model_key_unconditional": "model_b",
+        "default_model_unconditional": "uncond.safetensors",
+    }
     assert patched({}, spec, graph)["11"]["inputs"]["model_b"] == "uncond.safetensors"
 
 
 def test_text_encoder_default_and_override():
     spec = {**BASE_SPEC, "text_encoder_node": "12", "default_text_encoder": "default.safetensors"}
     assert patched({}, spec)["12"]["inputs"]["clip_name"] == "default.safetensors"
-    assert patched({"text_encoder": "mine.safetensors"}, spec)["12"]["inputs"]["clip_name"] == \
-        "mine.safetensors"
+    assert (
+        patched({"text_encoder": "mine.safetensors"}, spec)["12"]["inputs"]["clip_name"]
+        == "mine.safetensors"
+    )
 
 
 def test_prompt_can_enter_through_an_intermediate_node():
@@ -154,15 +183,19 @@ def test_prompt_can_enter_through_an_intermediate_node():
 def test_translation_switch_is_inverted():
     spec = {**BASE_SPEC, "translate_node": "40", "translate_key": "manual_translate"}
     graph = base_graph()
-    graph["40"] = {"class_type": "GoogleTranslateTextNode",
-                   "inputs": {"manual_translate": False}}
+    graph["40"] = {"class_type": "GoogleTranslateTextNode", "inputs": {"manual_translate": False}}
     assert patched({}, spec, graph)["40"]["inputs"]["manual_translate"] is True
     assert patched({"translate": True}, spec, graph)["40"]["inputs"]["manual_translate"] is False
 
 
 def test_enhance_off_removes_chain_and_rewires_the_encoder():
-    spec = {**BASE_SPEC, "prompt_node": "20", "prompt_input_node": "40",
-            "prompt_key": "prompt", "enhance_nodes": ["41", "42"]}
+    spec = {
+        **BASE_SPEC,
+        "prompt_node": "20",
+        "prompt_input_node": "40",
+        "prompt_key": "prompt",
+        "enhance_nodes": ["41", "42"],
+    }
     graph = base_graph()
     graph["40"] = {"class_type": "GoogleTranslateTextNode", "inputs": {"text": ""}}
     graph["41"] = {"class_type": "StringConcatenate", "inputs": {}}
@@ -176,8 +209,7 @@ def test_enhance_off_removes_chain_and_rewires_the_encoder():
 def test_enhance_rewire_uses_the_default_prompt_key():
     # No prompt_key in the spec: the rewire must write the same input the
     # prompt was written to ("text"), not a hard-coded "prompt".
-    spec = {**BASE_SPEC, "prompt_node": "20", "prompt_input_node": "40",
-            "enhance_nodes": ["41"]}
+    spec = {**BASE_SPEC, "prompt_node": "20", "prompt_input_node": "40", "enhance_nodes": ["41"]}
     graph = base_graph()
     graph["40"] = {"class_type": "GoogleTranslateTextNode", "inputs": {"text": ""}}
     graph["41"] = {"class_type": "TextGenerate", "inputs": {}}
@@ -205,8 +237,7 @@ def test_single_image_input():
     spec = {**BASE_SPEC, "image_node": "50"}
     graph = base_graph()
     graph["50"] = {"class_type": "LoadImage", "inputs": {"image": "old.png"}}
-    assert patched({"image_filename": "new.png"}, spec, graph)["50"]["inputs"]["image"] == \
-        "new.png"
+    assert patched({"image_filename": "new.png"}, spec, graph)["50"]["inputs"]["image"] == "new.png"
 
 
 def test_multiple_image_inputs():
@@ -220,8 +251,12 @@ def test_multiple_image_inputs():
 
 
 def test_second_image_removed_when_not_supplied():
-    spec = {**BASE_SPEC, "image2_node": "60", "image2_key": "images.image_2",
-            "image2_refs": [["20", "images.image1"]]}
+    spec = {
+        **BASE_SPEC,
+        "image2_node": "60",
+        "image2_key": "images.image_2",
+        "image2_refs": [["20", "images.image1"]],
+    }
     graph = base_graph()
     graph["60"] = {"class_type": "LoadImage", "inputs": {"image": "ref.png"}}
     graph["20"]["inputs"]["images.image_2"] = ["60", 0]
@@ -236,17 +271,23 @@ def test_second_image_kept_when_supplied():
     spec = {**BASE_SPEC, "image2_node": "60"}
     graph = base_graph()
     graph["60"] = {"class_type": "LoadImage", "inputs": {"image": "ref.png"}}
-    assert patched({"image2_filename": "second.png"}, spec, graph)["60"]["inputs"]["image"] == \
-        "second.png"
+    assert (
+        patched({"image2_filename": "second.png"}, spec, graph)["60"]["inputs"]["image"]
+        == "second.png"
+    )
 
 
 def lora_graph() -> dict:
     graph = base_graph()
     graph["13"] = {"class_type": "CLIP Input Switch", "inputs": {}}
-    graph["108"] = {"class_type": "LoraLoader", "inputs": {"lora_name": "a.safetensors",
-                                                          "model": ["10", 0], "clip": ["13", 1]}}
-    graph["109"] = {"class_type": "LoraLoader", "inputs": {"lora_name": "b.safetensors",
-                                                          "model": ["108", 0], "clip": ["108", 1]}}
+    graph["108"] = {
+        "class_type": "LoraLoader",
+        "inputs": {"lora_name": "a.safetensors", "model": ["10", 0], "clip": ["13", 1]},
+    }
+    graph["109"] = {
+        "class_type": "LoraLoader",
+        "inputs": {"lora_name": "b.safetensors", "model": ["108", 0], "clip": ["108", 1]},
+    }
     graph["30"]["inputs"]["model"] = ["109", 0]
     graph["20"]["inputs"]["clip"] = ["109", 1]
     graph["21"]["inputs"]["clip"] = ["109", 1]
@@ -255,8 +296,11 @@ def lora_graph() -> dict:
 
 def test_two_lora_chain_is_rebuilt_in_order():
     spec = {**BASE_SPEC, "lora1_node": "108", "lora2_node": "109"}
-    api = patched({"lora1": "a2.safetensors", "lora2": "b2.safetensors", "lora_strength": 0.6},
-                  spec, lora_graph())
+    api = patched(
+        {"lora1": "a2.safetensors", "lora2": "b2.safetensors", "lora_strength": 0.6},
+        spec,
+        lora_graph(),
+    )
     assert api["108"]["inputs"]["model"] == ["10", 0]
     assert api["108"]["inputs"]["clip"] == ["13", 0]
     assert api["109"]["inputs"]["model"] == ["108", 0]
@@ -275,8 +319,14 @@ def test_disabled_lora_is_removed_and_the_chain_closed():
 
 
 def test_unified_lora_strength_node():
-    spec = {**BASE_SPEC, "lora1_node": "63", "lora2_node": "64",
-            "lora_strength_node": "67", "model_chain_start": "28", "model_chain_end": "11"}
+    spec = {
+        **BASE_SPEC,
+        "lora1_node": "63",
+        "lora2_node": "64",
+        "lora_strength_node": "67",
+        "model_chain_start": "28",
+        "model_chain_end": "11",
+    }
     graph = base_graph()
     graph["28"] = {"class_type": "UNETLoader", "inputs": {"unet_name": "u"}}
     graph["67"] = {"class_type": "PrimitiveFloat", "inputs": {"value": 1.0}}
@@ -313,11 +363,18 @@ def test_blank_lora_name_removes_the_single_loader():
 
 
 def test_resolution_selector_and_quality():
-    spec = {**BASE_SPEC, "resolution_node": "37", "quality_node": "36",
-            "megapixels_key": "megapixels", "aspect_ratio_key": "aspect_ratio"}
+    spec = {
+        **BASE_SPEC,
+        "resolution_node": "37",
+        "quality_node": "36",
+        "megapixels_key": "megapixels",
+        "aspect_ratio_key": "aspect_ratio",
+    }
     graph = base_graph()
-    graph["37"] = {"class_type": "ResolutionSelector",
-                   "inputs": {"megapixels": 1, "aspect_ratio": "1:1"}}
+    graph["37"] = {
+        "class_type": "ResolutionSelector",
+        "inputs": {"megapixels": 1, "aspect_ratio": "1:1"},
+    }
     graph["36"] = {"class_type": "CustomCombo", "inputs": {"choice": "Default"}}
     api = patched({"megapixels": 2, "aspect_ratio": "16:9", "quality": "Quality"}, spec, graph)
     assert api["37"]["inputs"] == {"megapixels": 2, "aspect_ratio": "16:9"}
@@ -325,11 +382,17 @@ def test_resolution_selector_and_quality():
 
 
 def test_dynamic_combo_nodes_get_the_resize_mode():
-    spec = {**BASE_SPEC, "megapixels_nodes": ["17"], "megapixels_key": "resolution.megapixels",
-            "megapixels_combo": ["17", "resolution", "resize"]}
+    spec = {
+        **BASE_SPEC,
+        "megapixels_nodes": ["17"],
+        "megapixels_key": "resolution.megapixels",
+        "megapixels_combo": ["17", "resolution", "resize"],
+    }
     graph = base_graph()
-    graph["17"] = {"class_type": "ReferenceMultiLatent",
-                   "inputs": {"resolution.megapixels": 1, "resolution": "keep"}}
+    graph["17"] = {
+        "class_type": "ReferenceMultiLatent",
+        "inputs": {"resolution.megapixels": 1, "resolution": "keep"},
+    }
     api = patched({"megapixels": 3}, spec, graph)
     assert api["17"]["inputs"]["resolution.megapixels"] == 3
     assert api["17"]["inputs"]["resolution"] == "resize"
@@ -344,11 +407,17 @@ def test_scale_factor():
 
 
 def test_scale_as_absolute_resolution():
-    spec = {**BASE_SPEC, "scale_node": "12", "scale_keys": ["resolution", "max_resolution"],
-            "scale_mode": "resolution"}
+    spec = {
+        **BASE_SPEC,
+        "scale_node": "12",
+        "scale_keys": ["resolution", "max_resolution"],
+        "scale_mode": "resolution",
+    }
     graph = base_graph()
-    graph["12"] = {"class_type": "SeedVR2LoadDiTModel",
-                   "inputs": {"resolution": 0, "max_resolution": 0}}
+    graph["12"] = {
+        "class_type": "SeedVR2LoadDiTModel",
+        "inputs": {"resolution": 0, "max_resolution": 0},
+    }
     api = patched({"scale": 2, "input_longest_side": 900}, spec, graph)
     assert api["12"]["inputs"]["resolution"] == 1800
     assert api["12"]["inputs"]["max_resolution"] == 1800
