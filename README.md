@@ -286,6 +286,8 @@ Each progress message carries a **Cancel** button. Pressing it drops the job if 
 
 `/gen_prompt` has the same control: it sits on the "waiting" message, then on the reasoning-effort picker. Cancelling ends the LLM session, drops the picker so a late click cannot start a second one, and unloads the model. When the prompt-composition workflow is running on the ComfyUI lane in `separate` mode, cancelling stops that job too.
 
+Shutting the bot down (Ctrl+C) also interrupts whatever ComfyUI is still sampling, so an image in progress does not keep running on the GPU after the bot is gone.
+
 ## Storage
 
 Three SQLite databases are created automatically in the project folder:

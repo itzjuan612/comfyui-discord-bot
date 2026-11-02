@@ -44,7 +44,7 @@ async def on_close():
     ComfyUI over that session. Without this, a Ctrl+C mid-generation closes the
     loop and leaves the GPU sampling a prompt nobody will see.
     """
-    await job_queue.shutdown()
+    await job_queue.shutdown(timeout=2)
     await close_session()
 
 
