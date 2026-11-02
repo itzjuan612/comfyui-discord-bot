@@ -26,7 +26,7 @@ DEFAULT_NSFW_TERMS = (
     # Explicit / pornographic
     "nsfw", "porn", "pornographic", "pornography", "explicit", "xxx", "erotic", "eroticism", "hentai",
     # Nudity
-    "nude", "naked", "nudity", "topless", "strip", "striptease",
+    "nude", "naked", "nudity", "topless", "striptease",
     "undress", "undressed",
     # Sexual acts
     "sex", "sexual", "intercourse", "orgy", "threesome", "gangbang",

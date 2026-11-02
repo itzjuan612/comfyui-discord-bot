@@ -6,7 +6,9 @@
     },
     "class_type": "UNETLoader",
     "_meta": {
-      "title": "Cargar Modelo de Difusión"
+      "title": "Cargar modelo de difusión",
+      "cnr_id": "comfy-core",
+      "ver": "0.8.2"
     }
   },
   "127": {
@@ -15,7 +17,9 @@
     },
     "class_type": "VAELoader",
     "_meta": {
-      "title": "Cargar VAE"
+      "title": "Cargar VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.8.2"
     }
   },
   "133": {
@@ -26,7 +30,9 @@
     },
     "class_type": "CLIPLoader",
     "_meta": {
-      "title": "Cargar CLIP"
+      "title": "Cargar CLIP",
+      "cnr_id": "comfy-core",
+      "ver": "0.8.2"
     }
   },
   "725": {
@@ -42,7 +48,7 @@
         0
       ],
       "images.image_1": [
-        "781",
+        "783",
         0
       ],
       "images.image_2": [
@@ -56,7 +62,9 @@
     },
     "class_type": "TextEncodeQwenImage21",
     "_meta": {
-      "title": "Text Encode Qwen Image 2.1"
+      "title": "Codificación de texto Qwen Image 2.1",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "733": {
@@ -70,7 +78,9 @@
     },
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
-      "title": "CargadorLoRAModeloSolo"
+      "title": "Cargar LoRA",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "734": {
@@ -85,7 +95,9 @@
     },
     "class_type": "APG",
     "_meta": {
-      "title": "Guía Adaptativa Proyectada"
+      "title": "Guía adaptativa proyectada",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "737": {
@@ -100,7 +112,9 @@
     },
     "class_type": "FreSca",
     "_meta": {
-      "title": "FreSca"
+      "title": "FreSca",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "748": {
@@ -115,7 +129,7 @@
       "scheduler": "simple",
       "denoise": 1,
       "model": [
-        "779",
+        "782",
         0
       ],
       "positive": [
@@ -133,7 +147,9 @@
     },
     "class_type": "KSampler",
     "_meta": {
-      "title": "KSampler"
+      "title": "KSampler",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "749": {
@@ -142,7 +158,9 @@
     },
     "class_type": "SeedNode",
     "_meta": {
-      "title": "Semilla"
+      "title": "Semilla",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "750": {
@@ -158,7 +176,9 @@
     },
     "class_type": "VAEDecode",
     "_meta": {
-      "title": "Decodificación VAE"
+      "title": "Decodificación VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.8.2"
     }
   },
   "776": {
@@ -167,7 +187,9 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "Cargar Imagen"
+      "title": "Cargar imagen",
+      "cnr_id": "comfy-core",
+      "ver": "0.37.0"
     }
   },
   "777": {
@@ -176,20 +198,9 @@
     },
     "class_type": "PrimitiveStringMultiline",
     "_meta": {
-      "title": "Cadena (Multilínea)"
-    }
-  },
-  "779": {
-    "inputs": {
-      "attention": "comfy kitchen attention",
-      "model": [
-        "737",
-        0
-      ]
-    },
-    "class_type": "ModelAttentionBackend",
-    "_meta": {
-      "title": "ModelAttentionBackend"
+      "title": "Cadena (Multilínea)",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "780": {
@@ -202,16 +213,34 @@
     },
     "class_type": "SaveImage",
     "_meta": {
-      "title": "Guardar Imagen"
+      "title": "Guardar imagen",
+      "cnr_id": "comfy-core",
+      "ver": "0.8.2"
     }
   },
-  "781": {
+  "782": {
     "inputs": {
-      "image": "Captura de pantalla 2026-09-19 013553.png"
+      "sage_attention": "auto",
+      "allow_compile": true,
+      "model": [
+        "737",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "783": {
+    "inputs": {
+      "image": "2136883ff727c4d8.png"
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "Cargar Imagen"
+      "title": "Cargar imagen",
+      "cnr_id": "comfy-core",
+      "ver": "0.37.0"
     }
   }
 }

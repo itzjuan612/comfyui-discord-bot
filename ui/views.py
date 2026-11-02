@@ -423,18 +423,18 @@ class UpscaleButton(Button):
 
 
 class FluxEditModal(Modal):
-    """Modal form for editing a generated image via the single-image
-    (1 image / edit) flux_edit workflow using Flux 2 Klein 4B Base.
+    """Modal form for editing a generated image via the Flux 3 Klein edit
+    workflow (single image).
 
     The first image of the clicked message is used as the source. The form
-    takes prompt, steps, sampler, resolution (megapixels), and privacy
-    (stealth/public); CFG is not a field and always falls back to the user's
-    saved flux_edit default. Left-empty fields fall back to the user's saved
-    flux_edit defaults.
+    takes prompt, steps, sampler, scheduler, and privacy (stealth/public);
+    CFG is not a field and falls back to the saved flux default, then to the
+    workflow's own value. Left-empty fields fall back to the user's saved flux
+    defaults. Output resolution follows the input image.
     """
 
     def __init__(self, default_stealth: bool = False):
-        super().__init__(title="Flux Edit (1-image workflow)")
+        super().__init__(title="Flux Edit")
         self.default_stealth = default_stealth
         self.prompt_input = TextInput(
             label="Prompt", style=TextStyle.paragraph,
@@ -448,9 +448,9 @@ class FluxEditModal(Modal):
             label="Sampler (optional)", style=TextStyle.short, required=False,
             placeholder="e.g. euler",
         )
-        self.megapixels_input = TextInput(
-            label="Resolution (optional)", style=TextStyle.short, required=False,
-            placeholder="Target megapixels, e.g. 1",
+        self.scheduler_input = TextInput(
+            label="Scheduler (optional)", style=TextStyle.short, required=False,
+            placeholder="e.g. simple",
         )
         self.privacy_input = TextInput(
             label="Privacy (optional)", style=TextStyle.short, required=False,
@@ -459,7 +459,7 @@ class FluxEditModal(Modal):
         self.add_item(self.prompt_input)
         self.add_item(self.steps_input)
         self.add_item(self.sampler_input)
-        self.add_item(self.megapixels_input)
+        self.add_item(self.scheduler_input)
         self.add_item(self.privacy_input)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -474,20 +474,21 @@ class FluxEditModal(Modal):
                 content="\u26a0\ufe0f Privacy must be \u201cstealth\u201d or \u201cpublic\u201d.", ephemeral=True
             )
             return
-        # CFG is not a modal field; it always falls back to the saved flux_edit default.
+        # CFG is not a modal field; it falls back to the saved flux default,
+        # then to the workflow's own value when no default is set.
         cfg = None
         steps = _parse_opt_int(self.steps_input.value)
         sampler = _parse_opt_str(self.sampler_input.value)
-        megapixels = _parse_opt_int(self.megapixels_input.value)
+        scheduler = _parse_opt_str(self.scheduler_input.value)
 
         if sampler is not None and sampler not in SAMPLER_NAMES:
             await interaction.response.send_message(
                 content="\u26a0\ufe0f Unknown sampler \u201c" + sampler + "\u201d.", ephemeral=True
             )
             return
-        if megapixels is not None and not (1 <= megapixels <= 8):
+        if scheduler is not None and scheduler not in SCHEDULER_NAMES:
             await interaction.response.send_message(
-                content="\u26a0\ufe0f Resolution must be between 1 and 8 megapixels.", ephemeral=True
+                content="\u26a0\ufe0f Unknown scheduler \u201c" + scheduler + "\u201d.", ephemeral=True
             )
             return
 
@@ -525,23 +526,23 @@ class FluxEditModal(Modal):
                                    label="\U0001f3a8 Editing image\u2026")
         log.info("Flux Edit clicked for message %s", interaction.message.id)
 
-        model = "flux2_klein"
-        spec = config["models"].get(model, {}).get("i2i_single")
+        model = "flux3_klein"
+        spec = config["models"].get(model, {}).get("i2i")
         if spec is None:
             progress.done = True
-            await reply_error(interaction, "\u274c The single-image edit workflow is not configured.", target=progress_msg)
+            await reply_error(interaction, "\u274c The Flux edit workflow is not configured.", target=progress_msg)
             return
 
-        # Fall back to the user's saved flux_edit defaults for unset fields.
+        # Fall back to the user's saved flux defaults for unset fields.
         saved = user_settings.get_settings(interaction.user.id)
         if cfg is None:
-            cfg = saved.get("flux_edit_cfg")
+            cfg = saved.get("flux_cfg")
         if steps is None:
-            steps = saved.get("flux_edit_steps")
+            steps = saved.get("flux_steps")
         if sampler is None:
-            sampler = saved.get("flux_edit_sampler")
-        if megapixels is None:
-            megapixels = saved.get("flux_edit_megapixels")
+            sampler = saved.get("flux_sampler")
+        if scheduler is None:
+            scheduler = saved.get("flux_scheduler")
 
         try:
             data1 = await download_image(image_attachments[0].url)
@@ -555,16 +556,17 @@ class FluxEditModal(Modal):
         gen_kwargs = {
             "prompt": prompt,
             "seed": None,
+            "negative": saved.get("flux_negative") or None,
             "cfg": cfg,
             "steps": steps,
             "sampler": sampler,
-            "megapixels": megapixels,
+            "scheduler": scheduler,
             "image_filename": uploaded1,
         }
 
         try:
             job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
-            fut = job_queue.submit(job, lane="comfyui", name="flux2_klein_i2i")
+            fut = job_queue.submit(job, lane="comfyui", name="flux3_klein_i2i")
             progress.arm(job)
             images, meta = await fut
             progress.done = True

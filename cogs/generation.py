@@ -15,7 +15,7 @@ from core import (
     schedule_message_deletion,
     ProgressUpdater, normalize_aspect_ratio,
     UPSCALE_CHOICES, ASPECT_RATIO_CHOICES, QUALITY_CHOICES,
-    SAMPLER_CHOICES, SCHEDULER_CHOICES, I2I_WORKFLOW_CHOICES,
+    SAMPLER_CHOICES, SCHEDULER_CHOICES,
     ComfyUIError,
 )
 from ui.autocomplete import _sdxl_model_autocomplete, _sdxl_lora_autocomplete, _zimage_model_autocomplete
@@ -81,6 +81,11 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
             if res_parts:
                 base_lines.append("**Resolution:** " + ", ".join(res_parts))
             base_lines.append(f"**Output:** {image_resolution(images[0])}")
+        elif model == "flux3_klein":
+            base_lines.append("**Prompt enhanced:** " + ("on" if gen_kwargs.get("enhance") is True else "off"))
+            if gen_kwargs.get("megapixels"):
+                base_lines.append(f"**Resolution:** {gen_kwargs['megapixels']} MP")
+            base_lines.append(f"**Output:** {image_resolution(images[0])}")
         else:
             base_lines.append(f"**Resolution:** {image_resolution(images[0])}")
         base_desc = "\n".join(base_lines)
@@ -102,7 +107,7 @@ async def run_t2i_generation(interaction: discord.Interaction, model: str,
 
 
 class GenerationCog(commands.Cog):
-    """ComfyUI generation commands: /ideogram /sdxl /zimage /qwen_image /upscale /flux_edit /qwen_edit /flush"""
+    """ComfyUI generation commands: /ideogram /sdxl /zimage /qwen_image /flux_image /upscale /flux_edit /qwen_edit /flush"""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -511,6 +516,72 @@ class GenerationCog(commands.Cog):
         await run_t2i_generation(interaction, "qwen_image", prompt, stealth, gen_kwargs)
 
 
+    @app_commands.command(name="flux_image", description="Generate an image with Flux 3 Klein")
+    @app_commands.choices(sampler=SAMPLER_CHOICES)
+    @app_commands.choices(scheduler=SCHEDULER_CHOICES)
+    @app_commands.describe(prompt="Text prompt")
+    @app_commands.describe(negative="Negative prompt (empty = the workflow's default)")
+    @app_commands.describe(enhance="Rewrite the prompt with the Qwen 3.5 9B enhancer (off by default)")
+    @app_commands.describe(cfg="CFG guidance scale")
+    @app_commands.describe(steps="Sampling steps")
+    @app_commands.describe(sampler="Sampler (optional)")
+    @app_commands.describe(scheduler="Scheduler (optional)")
+    @app_commands.describe(megapixels="Target resolution in megapixels")
+    @app_commands.describe(stealth="Ephemeral output, visible only to you")
+    async def flux_image(self, interaction: discord.Interaction, prompt: str,
+                         negative: str | None = None,
+                         enhance: bool | None = None,
+                         cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
+                         steps: Optional[app_commands.Range[int, 1, 150]] = None,
+                         sampler: str | None = None,
+                         scheduler: str | None = None,
+                         megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
+                         stealth: bool | None = None):
+        if stealth is None:
+            stealth = bool(user_settings.get_settings(interaction.user.id).get("stealth", False))
+        if await ban_guard(interaction):
+            return
+        if not await check_cooldown(interaction):
+            await interaction.response.send_message(
+                content="\u23f3 Please wait before requesting another image.", ephemeral=True
+            )
+            return
+
+        if nsfw_blocked(interaction, prompt):
+            await interaction.response.send_message(
+                content="\u26a0\ufe0f That prompt appears to be NSFW. Please run it in an NSFW channel.", ephemeral=True
+            )
+            msg = await interaction.original_response()
+            schedule_message_deletion(msg)
+            return
+
+        settings = user_settings.get_settings(interaction.user.id)
+        if negative is None:
+            negative = settings.get("flux_negative") or settings["negative_prompt"] or None
+        if cfg is None:
+            cfg = settings.get("flux_cfg")
+        if steps is None:
+            steps = settings.get("flux_steps")
+        if sampler is None:
+            sampler = settings.get("flux_sampler")
+        if scheduler is None:
+            scheduler = settings.get("flux_scheduler")
+        if megapixels is None:
+            megapixels = settings.get("flux_megapixels")
+
+        gen_kwargs = {
+            "prompt": prompt,
+            "negative": negative,
+            "enhance": enhance,
+            "cfg": cfg,
+            "steps": steps,
+            "sampler": sampler,
+            "scheduler": scheduler,
+            "megapixels": megapixels,
+        }
+        await run_t2i_generation(interaction, "flux3_klein", prompt, stealth, gen_kwargs)
+
+
     @app_commands.command(name="upscale", description="Upscale an image from your gallery")
     @app_commands.choices(model=UPSCALE_CHOICES)
     @app_commands.describe(image="Image to upscale (attach from your gallery)")
@@ -638,24 +709,27 @@ class GenerationCog(commands.Cog):
             await reply_error(interaction, f"\u274c Upscaling failed: {exc}")
 
 
-    @app_commands.command(name="flux_edit", description="Edit one image (or combine two) into a new image using Flux 2 Klein 4B Base")
-    @app_commands.choices(workflow=I2I_WORKFLOW_CHOICES)
+    @app_commands.command(name="flux_edit", description="Edit one image (or combine two) into a new image using Flux 3 Klein")
     @app_commands.choices(sampler=SAMPLER_CHOICES)
-    @app_commands.describe(workflow="Workflow: 1 image (edit) or 2 images (combine)")
+    @app_commands.choices(scheduler=SCHEDULER_CHOICES)
     @app_commands.describe(image="First input image (attach from your gallery)")
     @app_commands.describe(prompt="Prompt describing the desired edit")
-    @app_commands.describe(image2="Second input image (required when workflow is 2 images)")
+    @app_commands.describe(image2="Second input image (optional, for combining two images)")
+    @app_commands.describe(negative="Negative prompt (optional)")
     @app_commands.describe(cfg="CFG guidance scale (optional)")
     @app_commands.describe(steps="Sampling steps (optional)")
     @app_commands.describe(sampler="Sampler (optional)")
+    @app_commands.describe(scheduler="Scheduler (optional)")
     @app_commands.describe(megapixels="Target resolution in megapixels (optional)")
     @app_commands.describe(stealth="Ephemeral output, visible only to you")
-    async def flux_edit(self, interaction: discord.Interaction, workflow: str,
+    async def flux_edit(self, interaction: discord.Interaction,
                       image: discord.Attachment, prompt: str,
                       image2: discord.Attachment | None = None,
+                      negative: str | None = None,
                       cfg: Optional[app_commands.Range[float, 0.5, 20.0]] = None,
                       steps: Optional[app_commands.Range[int, 1, 150]] = None,
                       sampler: str | None = None,
+                      scheduler: str | None = None,
                       megapixels: Optional[app_commands.Range[int, 1, 8]] = None,
                       stealth: bool | None = None):
         if stealth is None:
@@ -676,15 +750,6 @@ class GenerationCog(commands.Cog):
             schedule_message_deletion(msg)
             return
 
-        need_two = workflow == "multi"
-        if need_two and image2 is None:
-            await interaction.response.send_message(
-                content="\u26a0\ufe0f The 2-image workflow needs two images. Please attach a second image.", ephemeral=True
-            )
-            msg = await interaction.original_response()
-            schedule_message_deletion(msg)
-            return
-
         await interaction.response.send_message(
             content=job_queue.waiting_prefix("comfyui") + "\U0001f3a8 Generating image\u2026 [\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
             ephemeral=stealth,
@@ -692,26 +757,24 @@ class GenerationCog(commands.Cog):
         progress_msg = await interaction.original_response()
         progress = ProgressUpdater(progress_msg, lane="comfyui")
         log = logging.getLogger("bot")
-        log.debug("flux_edit: workflow=%s prompt=%r", workflow, prompt)
+        log.debug("flux_edit: two_images=%s prompt=%r", image2 is not None, prompt)
 
-        model = "flux2_klein"
-        spec_key = "i2i_single" if workflow == "single" else "i2i_multi"
-        spec = config["models"].get(model, {}).get(spec_key)
+        model = "flux3_klein"
+        spec = config["models"].get(model, {}).get("i2i")
         if spec is None:
             progress.done = True
             progress.disarm()
-            await reply_error(interaction, f"\u274c Workflow {spec_key!r} is not configured.", target=progress_msg)
+            await reply_error(interaction, "\u274c Workflow 'i2i' is not configured.", target=progress_msg)
             return
 
         # Download and upload the input image(s) to ComfyUI.
         try:
             data1 = await download_image(image.url)
             uploaded1 = await comfy.upload_image(data1, f"discord_{uuid_hex()}.png")
-            uploaded_files = [uploaded1]
-            if need_two:
+            uploaded2 = None
+            if image2 is not None:
                 data2 = await download_image(image2.url)
                 uploaded2 = await comfy.upload_image(data2, f"discord_{uuid_hex()}.png")
-                uploaded_files.append(uploaded2)
         except Exception as exc:
             progress.done = True
             progress.disarm()
@@ -719,39 +782,45 @@ class GenerationCog(commands.Cog):
             await reply_error(interaction, f"\u274c Could not process the input images: {exc}", target=progress_msg)
             return
 
-        # Fall back to the user's saved flux_edit defaults for any parameter left unset.
+        # Fall back to the user's saved flux defaults for any parameter left unset.
         saved = user_settings.get_settings(interaction.user.id)
+        if negative is None:
+            negative = saved.get("flux_negative") or None
         if cfg is None:
-            cfg = saved.get("flux_edit_cfg")
+            cfg = saved.get("flux_cfg")
         if steps is None:
-            steps = saved.get("flux_edit_steps")
+            steps = saved.get("flux_steps")
         if sampler is None:
-            sampler = saved.get("flux_edit_sampler")
+            sampler = saved.get("flux_sampler")
+        if scheduler is None:
+            scheduler = saved.get("flux_scheduler")
         if megapixels is None:
-            megapixels = saved.get("flux_edit_megapixels")
+            megapixels = saved.get("flux_megapixels")
 
         gen_kwargs = {
             "prompt": prompt,
             "seed": None,
+            "negative": negative,
             "cfg": cfg,
             "steps": steps,
             "sampler": sampler,
+            "scheduler": scheduler,
             "megapixels": megapixels,
+            "image_filename": uploaded1,
+            # None when omitted: apply_spec drops node 64 and its auto-grow refs.
+            "image2_filename": uploaded2,
         }
-        if need_two:
-            gen_kwargs["image_files"] = uploaded_files
-        else:
-            gen_kwargs["image_filename"] = uploaded_files[0]
 
         try:
             job = run_image(spec, on_progress=progress.update, model_key=model, **gen_kwargs)
-            fut = job_queue.submit(job, lane="comfyui", name="flux2_klein_i2i")
+            fut = job_queue.submit(job, lane="comfyui", name="flux3_klein_i2i")
             progress.arm(job)
             images, meta = await fut
             progress.done = True
-            workflow_label = "1 image (edit)" if workflow == "single" else "2 images (combine)"
+            display_model = meta.get("ckpt_name") or model
+            workflow_label = "2 images (combine)" if uploaded2 is not None else "1 image (edit)"
             base_desc = "\n".join([
-                f"**Model:** {model}",
+                f"**Model:** {display_model}",
                 f"**Workflow:** {workflow_label}",
                 f"**Prompt:** {prompt[:3800]}",
                 f"**Resolution:** {image_resolution(images[0])}",

@@ -163,6 +163,12 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
                 str(input_node),
                 0,
             ]
+    # Flux 3 Klein T2I: the Interruptor (If/Else Switch) picks between the raw
+    # prompt and the upsampler's text. Its inputs are lazy, so off skips the
+    # enhancer entirely. Off unless enhance=True is passed.
+    enhance_node = spec.get("enhance_node")
+    if enhance_node is not None:
+        workflow[str(enhance_node)]["inputs"][spec.get("enhance_key", "switch")] = bool(enhance)
     if negative is not None:
         set_node(spec.get("negative_node"), spec.get("negative_key", "text"), negative)
     if seed is not None:
@@ -179,10 +185,10 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         if image_nodes:
             for node_id, fname in zip(image_nodes, image_files):
                 workflow[str(node_id)]["inputs"]["image"] = fname
-    # Qwen edit's optional second image (single spec for 1- and 2-image
-    # edits). When omitted, the second LoadImage node is removed and its
-    # input is dropped from the encode node so ComfyUI never validates an
-    # empty LoadImage.
+    # Optional second image for edit models that take more than one reference.
+    # When omitted, the second LoadImage node is removed and every input that
+    # referenced it is dropped so ComfyUI never validates an empty LoadImage
+    # (qwen: image2_key on prompt_node; flux3: image2_refs auto-grow inputs).
     image2_node = spec.get("image2_node")
     if image2_node is not None:
         image2_filename = kwargs.get("image2_filename")
@@ -190,6 +196,10 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
             workflow[str(image2_node)]["inputs"]["image"] = image2_filename
         else:
             workflow.pop(str(image2_node), None)
+            for ref_node, ref_key in spec.get("image2_refs") or []:
+                node = workflow.get(str(ref_node))
+                if node is not None:
+                    node["inputs"].pop(ref_key, None)
             encode_node = workflow.get(str(spec.get("prompt_node")))
             if encode_node is not None:
                 encode_node["inputs"].pop(spec.get("image2_key", "images.image_2"), None)
@@ -254,9 +264,11 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
             workflow[str(chain_end)]["inputs"]["model"] = [prev, 0]
     elif spec.get("model_chain_start") is not None and spec.get("lora1_node") is not None:
         # Single model-only LoRA loader in a plain chain (Qwen Image 2.1:
-        # UNETLoader -> LoraLoaderModelOnly -> APG). The effective name is the
-        # command's `lora` param or the config `lora` default; empty/missing
-        # removes the node and rewires the chain straight from start to end.
+        # UNETLoader -> LoraLoaderModelOnly -> SageAttention -> APG). The
+        # effective name is the command's `lora` param or the config `lora`
+        # default; empty/missing removes the node and reconnects whatever
+        # consumed it to the chain source, so the attention patch in between
+        # is neither bypassed nor left pointing at a missing node.
         nid = str(spec["lora1_node"])
         if lora:
             node = workflow[nid]
@@ -266,9 +278,10 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         else:
             workflow.pop(nid, None)  # disabled: remove so it is not validated
             chain_start = spec.get("model_chain_start")
-            chain_end = spec.get("model_chain_end")
-            if chain_start is not None and chain_end is not None:
-                workflow[str(chain_end)]["inputs"]["model"] = [str(chain_start), 0]
+            if chain_start is not None:
+                for node in workflow.values():
+                    if node["inputs"].get("model") == [nid, 0]:
+                        node["inputs"]["model"] = [str(chain_start), 0]
     else:
         strength_val = float(lora_strength) if lora_strength is not None else None
         active = []
@@ -315,6 +328,11 @@ def apply_spec(workflow: dict, spec: dict, **kwargs) -> None:
         mp_key = spec.get("megapixels_key", "megapixels")
         for node_id in spec.get("megapixels_nodes") or []:
             workflow[str(node_id)]["inputs"][mp_key] = int(megapixels)
+        # Dynamic-combo nodes (e.g. ReferenceMultiLatent) also need their mode
+        # selected: [node, key, value] switches it to "resize".
+        combo = spec.get("megapixels_combo")
+        if combo:
+            workflow[str(combo[0])]["inputs"][combo[1]] = combo[2]
     if aspect_ratio is not None and resolution_node is not None:
         aspect_ratio = normalize_aspect_ratio(aspect_ratio)
         workflow[str(resolution_node)]["inputs"][spec.get("aspect_ratio_key", "aspect_ratio")] = aspect_ratio

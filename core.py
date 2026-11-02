@@ -61,11 +61,6 @@ ASPECT_RATIOS = [
     "21:9 (Ultrawide)",
 ]
 ASPECT_RATIO_CHOICES = [app_commands.Choice(name=r, value=r) for r in ASPECT_RATIOS]
-# Image-to-image workflow and sampler choices (Flux 2 Klein 4B Base).
-I2I_WORKFLOW_CHOICES = [
-    app_commands.Choice(name="1 image (edit)", value="single"),
-    app_commands.Choice(name="2 images (combine)", value="multi"),
-]
 # Trimmed down to exactly 25 core options for native static dropdowns
 SAMPLER_NAMES = [
     "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", 

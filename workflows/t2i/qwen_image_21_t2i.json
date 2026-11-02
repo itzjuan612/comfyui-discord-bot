@@ -1,17 +1,4 @@
 {
-  "94": {
-    "inputs": {
-      "filename_prefix": "Flux2_Klein_9b_kv",
-      "images": [
-        "750",
-        0
-      ]
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "Guardar Imagen"
-    }
-  },
   "126": {
     "inputs": {
       "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
@@ -19,7 +6,9 @@
     },
     "class_type": "UNETLoader",
     "_meta": {
-      "title": "Cargar Modelo de Difusión"
+      "title": "Cargar modelo de difusión",
+      "cnr_id": "comfy-core",
+      "ver": "0.8.2"
     }
   },
   "127": {
@@ -28,7 +17,9 @@
     },
     "class_type": "VAELoader",
     "_meta": {
-      "title": "Cargar VAE"
+      "title": "Cargar VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.8.2"
     }
   },
   "133": {
@@ -39,13 +30,15 @@
     },
     "class_type": "CLIPLoader",
     "_meta": {
-      "title": "Cargar CLIP"
+      "title": "Cargar CLIP",
+      "cnr_id": "comfy-core",
+      "ver": "0.8.2"
     }
   },
   "725": {
     "inputs": {
       "prompt": [
-        "774",
+        "779",
         0
       ],
       "negative_prompt": "artifacts, gpt-image, washed-out colors, low quality, low resolution, AI slop, deviantart, sloppy lines, rough sketch, blurry, indistinct, missing fingers, badly drawn hands, wrong number of fingers",
@@ -61,7 +54,9 @@
     },
     "class_type": "TextEncodeQwenImage21",
     "_meta": {
-      "title": "Text Encode Qwen Image 2.1"
+      "title": "Codificación de texto Qwen Image 2.1",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "733": {
@@ -75,7 +70,9 @@
     },
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
-      "title": "CargadorLoRAModeloSolo"
+      "title": "Cargar LoRA",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "734": {
@@ -84,13 +81,15 @@
       "norm_threshold": 10,
       "momentum": 0.3,
       "model": [
-        "733",
+        "775",
         0
       ]
     },
     "class_type": "APG",
     "_meta": {
-      "title": "Guía Adaptativa Proyectada"
+      "title": "Guía adaptativa proyectada",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "737": {
@@ -105,7 +104,9 @@
     },
     "class_type": "FreSca",
     "_meta": {
-      "title": "FreSca"
+      "title": "FreSca",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "741": {
@@ -122,7 +123,9 @@
     },
     "class_type": "EmptyLatentImage",
     "_meta": {
-      "title": "Imagen Latente Vacía"
+      "title": "Imagen latente vacía",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "748": {
@@ -133,11 +136,11 @@
       ],
       "steps": 25,
       "cfg": 3,
-      "sampler_name": "euler",
-      "scheduler": "simple",
+      "sampler_name": "heun",
+      "scheduler": "sgm_uniform",
       "denoise": 1,
       "model": [
-        "780",
+        "777",
         0
       ],
       "positive": [
@@ -155,16 +158,20 @@
     },
     "class_type": "KSampler",
     "_meta": {
-      "title": "KSampler"
+      "title": "KSampler",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "749": {
     "inputs": {
-      "seed": 0
+      "seed": 797329334593046
     },
     "class_type": "SeedNode",
     "_meta": {
-      "title": "Semilla"
+      "title": "Semilla",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "750": {
@@ -180,7 +187,9 @@
     },
     "class_type": "VAEDecode",
     "_meta": {
-      "title": "Decodificación VAE"
+      "title": "Decodificación VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.8.2"
     }
   },
   "753": {
@@ -208,12 +217,14 @@
     },
     "class_type": "TextGenerate",
     "_meta": {
-      "title": "TextGenerate"
+      "title": "Generar texto",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "754": {
     "inputs": {
-      "string_a": "You are an expert prompt engineer specializing in Qwen Image. Your task is to expand the user's short, raw concept into a highly detailed, descriptive, and visually rich prompt optimized for image generation. \n\nFollow these strict structural rules:\n1. FORMAT: Write in continuous, flowing natural prose (paragraphs). Avoid comma-separated tag lists or \"tag soup\".\n2. LENGTH: Aim for a comprehensive description of approximately 150 to 200 words. Do not let the output get truncated.\n3. STRUCTURE: Naturally blend the following details into the description:\n   - Subject: Clear, central focus of the image.\n   - Environment & Background: Detailed setting, atmospheric conditions, weather, time of day.\n   - Lighting & Mood: Soft, dramatic, cinematic, volumetric, or specific colored lighting to establish emotion.\n   - Composition & Camera: Perspective, shot type (e.g., close-up, wide-angle), camera positioning, and depth of field.\n4. TEXT RENDERING: If the user requests literal text/glyphs to appear in the image, you must put the exact text inside double quotes (e.g., \"Welcome\"). Provide specific text positioning, font, color, and medium.\n5. PROHIBITIONS: Never include negations (e.g., \"no cars\", \"without clouds\") in this positive prompt. Only describe what SHOULD be visible. \n\nOutput ONLY the final expanded prompt. Do not include introductory or concluding conversational filler. ",
+      "string_a": "You are the prompt upsampler of a text-to-image model. Expand the user's short request into ONE detailed, self-contained caption: the exact text the image model receives. Output only the caption, with no greetings, explanations, refusals, questions, Markdown, headings, JSON, coordinates, ids or angle-bracket tokens, and no quotes around it. If the input is not clearly an image request, caption a visualization of its concept. The request may begin with a \"TARGET CANVAS: W:H\" line: compose for that canvas (wide spreads content sideways, tall stacks it) and never mention the ratio or the canvas.\n\nFidelity and planning: keep every explicit subject, attribute, count, spatial constraint, style cue and piece of wording; never contradict, substitute, drop or narrow the request, and keep an abstract concept abstract. Decide everything left open as ONE concrete, consistent plan; never offer alternatives or hedge. Never re-express a stated constraint through another mechanism; add camera optics (depth of field, bokeh, blur) only when asked for or implied. Without a stated style, plan an actual photograph and open with the medium convention (\"Full-color outdoor photograph, ...\", \"Full-color indoor photograph, ...\", \"Studio photograph, ...\", \"Close-up photograph, ...\"); keep \"Photorealistic\" for renders, and turn \"photorealistic\" or \"realistic\" requests for photos into the photograph convention. Give a photograph a few ordinary, non-ideal specifics drawn from the scene's own objects instead of the stock-photo ideal. Do not invent names, brands, logos or celebrities; keep user-named ones. A long request keeps its content but not its wording: drop appraisal and sales vocabulary, turn moods into observable physical facts, and add only new concrete content with positions. Time of day is lighting, not rendered text.\n\nCaption format: one continuous prose block in the generative voice, never \"this image shows\", \"we can see\" or \"is visible\". Lead with medium and style, then scene, lighting and camera, then the subjects with concrete colors, materials and state. Every person in focus gets an observable profile: ethnicity, gender, age range, skin tone (\"fair skin\", \"brown skin\"), hair and clothing. Make the layout reconstructable from words: frame-relative positions (frame-left, frame-right, upper, lower, foreground, midground, background), sentence-initial anchors (\"On the left, ...\", \"In the background, ...\"), relations (holds, faces, behind) and a consistent order; describe up to about ten instances one by one, beyond that give the exact count and arrangement. Out-of-focus or distant planes are shapes, colors and silhouettes, never identities or readable text, and the background takes about a sixth of the caption. Be definite: no hedging adverbs, no quality or emotion judgments, no closing sentence about mood; state negations as what is present. Rendered text: transcribe every wording verbatim inside double quotes in its original language and script, keep the line breaks of multi-line text, and give its typography, color and placement; author concrete, domain-correct wording when the request needs text it does not supply, and name canonical structures (calendar, keyboard, periodic table) exactly with their full layout. All prose is English; only quoted text keeps its language. Typical length is 100 to 350 words, more for complex scenes.\n\nOutput only the caption.\n",
       "string_b": [
         "773",
         0
@@ -222,31 +233,22 @@
     },
     "class_type": "StringConcatenate",
     "_meta": {
-      "title": "Concatenar"
+      "title": "Concatenar",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "766": {
     "inputs": {
       "aspect_ratio": "1:1 (Square)",
-      "megapixels": 1,
+      "megapixels": 2,
       "multiple": 32
     },
     "class_type": "ResolutionSelector",
     "_meta": {
-      "title": "Selector de Resolución"
-    }
-  },
-  "769": {
-    "inputs": {
-      "attention": "comfy kitchen attention",
-      "model": [
-        "737",
-        0
-      ]
-    },
-    "class_type": "ModelAttentionBackend",
-    "_meta": {
-      "title": "ModelAttentionBackend"
+      "title": "Selector de resolución",
+      "cnr_id": "comfy-core",
+      "ver": "0.36.0"
     }
   },
   "773": {
@@ -255,14 +257,67 @@
       "to_translate": "en",
       "manual_translate": false,
       "Manual Trasnlate": "Manual Trasnlate",
-      "text": "A"
+      "text": ""
     },
     "class_type": "GoogleTranslateTextNode",
     "_meta": {
-      "title": "Google Translate Text Node"
+      "title": "Google Translate Text Node",
+      "cnr_id": "comfyui_custom_nodes_alekpet",
+      "ver": "1.1.10"
     }
   },
-  "774": {
+  "775": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": true,
+      "model": [
+        "733",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "777": {
+    "inputs": {
+      "residual_diff_threshold": 0.04,
+      "start_percent": 0.12,
+      "end_percent": 0.88,
+      "max_consecutive_hits": 3,
+      "cache_device": "gpu",
+      "metric_stride": 16,
+      "max_cache_mb": 4096,
+      "threshold_mode": "two_stage",
+      "split_ratio": 0.35,
+      "late_threshold": 0.12,
+      "model": [
+        "737",
+        0
+      ]
+    },
+    "class_type": "QwenImage21BlockCacheT8",
+    "_meta": {
+      "title": "Qwen Image 2.1 Block Cache (T8)"
+    }
+  },
+  "778": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "750",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Guardar imagen",
+      "cnr_id": "comfy-core",
+      "ver": "0.8.2"
+    }
+  },
+  "779": {
     "inputs": {
       "anything": [
         "753",
@@ -271,31 +326,9 @@
     },
     "class_type": "easy showAnything",
     "_meta": {
-      "title": "easy showAnything"
-    }
-  },
-  "780": {
-    "inputs": {
-      "warmup_steps": 5,
-      "tail_actual_steps": 6,
-      "window_size": 2,
-      "flex_window": 0.1,
-      "max_consecutive_forecasts": 4,
-      "history_points": 8,
-      "chebyshev_degree": 4,
-      "ridge_lambda": 0.1,
-      "blend_weight": 1,
-      "cache_device": "main_device",
-      "force_actual_on_control": true,
-      "debug": false,
-      "model": [
-        "769",
-        0
-      ]
-    },
-    "class_type": "SpectrumQwenImage21",
-    "_meta": {
-      "title": "Spectrum (Qwen-Image-2.1)"
+      "title": "easy showAnything",
+      "cnr_id": "comfyui-easy-use",
+      "ver": "1.3.6"
     }
   }
 }
