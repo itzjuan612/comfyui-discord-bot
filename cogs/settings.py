@@ -123,22 +123,27 @@ class SettingsCog(commands.Cog):
             ideogram_aspect_ratio=ideogram_aspect_ratio,
         )
 
-    @settings.command(name="flux_edit", description="Default Flux Edit settings (used by /flux_edit and the Flux Edit button)")
-    @app_commands.describe(flux_edit_cfg="Default CFG guidance scale")
-    @app_commands.describe(flux_edit_steps="Default sampling steps")
-    @app_commands.choices(flux_edit_sampler=SAMPLER_CHOICES)
-    @app_commands.describe(flux_edit_sampler="Default sampler")
-    @app_commands.describe(flux_edit_megapixels="Default resolution in megapixels")
-    async def settings_flux_edit(self, interaction: discord.Interaction,
-                                 flux_edit_cfg: float | None = None,
-                                 flux_edit_steps: int | None = None,
-                                 flux_edit_sampler: str | None = None,
-                                 flux_edit_megapixels: int | None = None):
+    @settings.command(name="flux", description="Default Flux settings (used by /flux_image, /flux_edit and the Flux Edit button)")
+    @app_commands.describe(flux_negative="Default negative prompt")
+    @app_commands.describe(flux_cfg="Default CFG guidance scale")
+    @app_commands.describe(flux_steps="Default sampling steps")
+    @app_commands.choices(flux_sampler=SAMPLER_CHOICES)
+    @app_commands.describe(flux_sampler="Default sampler")
+    @app_commands.choices(flux_scheduler=SCHEDULER_CHOICES)
+    @app_commands.describe(flux_scheduler="Default scheduler")
+    @app_commands.describe(flux_megapixels="Default resolution in megapixels (used by /flux_image and /flux_edit)")
+    async def settings_flux(self, interaction: discord.Interaction,
+                            flux_negative: str | None = None,
+                            flux_cfg: float | None = None,
+                            flux_steps: int | None = None,
+                            flux_sampler: str | None = None,
+                            flux_scheduler: str | None = None,
+                            flux_megapixels: int | None = None):
         await interaction.response.defer(ephemeral=True)
         await self._apply(
             interaction,
-            flux_edit_cfg=flux_edit_cfg, flux_edit_steps=flux_edit_steps,
-            flux_edit_sampler=flux_edit_sampler, flux_edit_megapixels=flux_edit_megapixels,
+            flux_negative=flux_negative, flux_cfg=flux_cfg, flux_steps=flux_steps, flux_sampler=flux_sampler,
+            flux_scheduler=flux_scheduler, flux_megapixels=flux_megapixels,
         )
 
     @settings.command(name="qwen", description="Default Qwen Image 2.1 settings (used by /qwen_image, /qwen_edit and the Qwen Edit button)")

@@ -62,7 +62,7 @@
   },
   "57:30": {
     "inputs": {
-      "clip_name": "qwen_3_4b.safetensors",
+      "clip_name": "qwen3-4b_int8_convrot_fp16emixed.safetensors",
       "type": "lumina2",
       "device": "default"
     },

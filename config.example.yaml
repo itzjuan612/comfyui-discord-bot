@@ -159,31 +159,43 @@ models:
       # end = ModelSamplingAuraFlow which feeds the KSampler).
       model_chain_start: "57:28"
       model_chain_end: "57:11"  
-  flux2_klein:
-    i2i_single:
+  flux3_klein:
+    t2i:
+      file: workflows/t2i/image_flux3_klein_t2i.json
+      default_model: "flux3-image-klein-base-int8-convrot.safetensors"
+      prompt_node: "28"
+      prompt_key: value
+      negative_node: "40"
+      seed_node: "35"
+      steps_node: "35"
+      cfg_node: "35"
+      sampler_node: "35"
+      # ResolutionSelector node: megapixels (aspect ratio keeps the workflow default).
+      resolution_node: "19"
+      megapixels_key: megapixels
+      # Interruptor (If/Else Switch): True = upsampled prompt, False = raw prompt.
+      enhance_node: "38"
+      enhance_key: switch
+    i2i:
+      # Single-image and two-image edits share one workflow. When no second
+      # image is given, LoadImage 64 is removed and the auto-grow inputs that
+      # referenced it (image2_refs) are dropped.
       file: workflows/i2i/image_flux2_klein_image_edit_4b_base.json
-      default_model: "flux-2-klein-4b-fp8.safetensors"
-      prompt_node: "75:74"
-      negative_node: "75:67"
-      seed_node: "75:73"
-      seed_key: noise_seed
-      steps_node: "75:62"
-      cfg_node: "75:63"
-      sampler_node: "75:61"
-      image_node: "76"
-      megapixels_nodes: ["75:80"]
-    i2i_multi:
-      file: workflows/i2i/image_flux2_klein_multi_image_edit_4b_base.json
-      default_model: "flux-2-klein-4b-fp8.safetensors"
-      prompt_node: "92:113"
-      negative_node: "92:87"
-      seed_node: "92:105"
-      seed_key: noise_seed
-      steps_node: "92:115"
-      cfg_node: "92:114"
-      sampler_node: "92:102"
-      image_nodes: ["76", "81"]
-      megapixels_nodes: ["92:110", "92:85"]
+      default_model: "flux3-image-klein-base-int8-convrot.safetensors"
+      prompt_node: "49"
+      prompt_key: prompt
+      negative_node: "58"
+      seed_node: "7"
+      steps_node: "7"
+      cfg_node: "7"
+      sampler_node: "7"
+      image_node: "65"
+      image2_node: "64"
+      image2_refs: [["50", "images.image1"], ["17", "images.image1"]]
+      # ReferenceMultiLatent dynamic combo: mode "resize" + target megapixels.
+      megapixels_nodes: ["17"]
+      megapixels_key: "resolution.megapixels"
+      megapixels_combo: ["17", "resolution", "resize"]
   qwen_image:
     t2i:
       # API-format workflow: node ids are plain strings.
@@ -201,7 +213,9 @@ models:
       # (see enhance_nodes below).
       lora: "qwen-image-2.1-fix-1.0-comfy.safetensors"
       lora1_node: "733"
-      # Model chain around the LoRA loader (UNETLoader -> LoRA -> APG).
+      # Model chain around the LoRA loader (UNETLoader -> LoRA -> SageAttention
+      # -> APG). Disabling the LoRA reconnects whatever consumed it, so the
+      # attention patch stays in the graph.
       model_chain_start: "126"
       model_chain_end: "734"
       # The positive prompt enters through the GoogleTranslateTextNode
@@ -220,7 +234,7 @@ models:
       # and the encoder (StringConcatenate -> TextGenerate -> showAnything).
       # Off unless enhance: true; otherwise these nodes are removed and the
       # encoder's prompt input is rewired straight to the translate node.
-      enhance_nodes: [754, 753, 774]
+      enhance_nodes: [754, 753, 779]
       prompt_node: "725"
       prompt_key: prompt
       negative_node: "725"
@@ -257,7 +271,7 @@ models:
       steps_node: "748"
       cfg_node: "748"
       sampler_node: "748"
-      image_node: "781"
+      image_node: "783"
       image_key: "images.image_1"
       image2_node: "776"
       image2_key: "images.image_2"
