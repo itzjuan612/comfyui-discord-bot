@@ -47,6 +47,8 @@ A Discord bot that exposes ComfyUI image generation workflows as slash commands.
 | `aspect_ratio` | Aspect ratio preset |
 | `stealth` | Ephemeral output |
 
+> **Speed-ups:** The Ideogram 4 workflow patches both UNet branches (conditional and unconditional) with [SageAttention](https://github.com/kijai/ComfyUI-KJNodes) (`PathchSageAttentionKJ`, `sage_attention: auto`, `allow_compile: true`), the same patch Qwen Image 2.1 uses, so sampling uses SageAttention whenever the `sageattention` library is installed.
+
 ### `/sdxl` and `/zimage`
 
 | Parameter | Description |

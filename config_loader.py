@@ -132,6 +132,8 @@ models:
       # The workflow has a second UNet loader for the unconditional branch.
       default_model_unconditional: "ideogram4_unconditional_int8_convrot.safetensors"
       model_node_unconditional: "98:154"
+      # Both UNet loaders feed a PathchSageAttentionKJ patch (same settings as
+      # Qwen Image 2.1) before the guider; model_node stays on the loader.
       # Text encoder (CLIPLoader). Same Qwen 3 VL file as Qwen Image 2.1, so a
       # different quant can be swapped in here.
       default_text_encoder: "qwen3vl_8b_int8_convrot.safetensors"

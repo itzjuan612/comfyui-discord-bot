@@ -374,7 +374,7 @@
         0
       ],
       "model_negative": [
-        "98:154",
+        "98:159",
         0
       ],
       "negative": [
@@ -407,13 +407,41 @@
       "start_percent": 0.7,
       "end_percent": 1,
       "model": [
-        "98:23",
+        "98:158",
         0
       ]
     },
     "class_type": "CFGOverride",
     "_meta": {
       "title": "Anulación de CFG"
+    }
+  },
+  "98:158": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": true,
+      "model": [
+        "98:23",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "98:159": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": true,
+      "model": [
+        "98:154",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
     }
   }
 }

@@ -112,3 +112,15 @@ def test_shipped_workflows_convert_cleanly(path: Path):
             is_link = isinstance(value, list) and len(value) == 2 and isinstance(value[0], str)
             if is_link:
                 assert value[0] in api, f"node {node_id} input {name} links to missing {value[0]}"
+
+
+def test_ideogram_workflow_patches_both_unet_branches_with_sage_attention():
+    path = Path(__file__).resolve().parent.parent / "workflows/t2i/Ideogram_4_generator.json"
+    api = json.loads(path.read_text(encoding="utf-8"))
+    sage = {nid for nid, node in api.items() if node["class_type"] == "PathchSageAttentionKJ"}
+    assert sage == {"98:158", "98:159"}
+    # Each patch still starts at its own UNet loader.
+    assert {api[nid]["inputs"]["model"][0] for nid in sage} == {"98:23", "98:154"}
+    # Both guider inputs read from the patches, not straight from the loaders.
+    assert api["98:157"]["inputs"]["model"][0] in sage
+    assert api["98:155"]["inputs"]["model_negative"][0] in sage
